@@ -35,7 +35,7 @@ export function Logo() {
       <Emblem className="logo-emblem" />
       <div className="logo-text">
         <span className="logo-top">O ASSASSINATO</span>
-        <span className="logo-mid"><i />do<i /></span>
+        <span className="logo-mid">do</span>
         <span className="logo-name">Gabriel<b className="logo-dot" /></span>
       </div>
     </div>

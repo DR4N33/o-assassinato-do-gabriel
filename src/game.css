@@ -88,23 +88,22 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
   .qr-sheet h2,.qr-steps,.qr-url,.qr-brand{color:#111!important}
   .qr-img{width:110mm}
 }
-/* Logotipo */
+/* Logotipo — numa só linha: O ASSASSINATO do Gabriel */
 .emblem{color:var(--accent);flex-shrink:0}.emblem-drop{fill:#c0394b}
 .brand .emblem{width:36px;height:36px}
-.logo{display:flex;align-items:center;gap:26px;margin:30px 0 28px}
-.logo-emblem{width:118px;height:118px;filter:drop-shadow(0 0 22px #edb69033)}
-.logo-text{display:flex;flex-direction:column;line-height:1}
-.logo-top{font-family:Manrope,sans-serif;font-weight:800;letter-spacing:.32em;font-size:24px;color:var(--cream)}
-.logo-mid{display:flex;align-items:center;gap:12px;margin:10px 0 2px;font:italic 400 18px "Playfair Display",Georgia,serif;color:var(--muted)}
-.logo-mid i{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
-.logo-name{font:italic 500 82px "Playfair Display",Georgia,serif;color:var(--accent);letter-spacing:-1px;position:relative}
-.logo-dot{display:inline-block;width:.16em;height:.16em;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#c0394b;margin-left:.06em;vertical-align:baseline}
+.logo{display:flex;flex-direction:column;align-items:flex-start;gap:18px;margin:30px 0 28px}
+.logo-emblem{width:92px;height:92px;filter:drop-shadow(0 0 22px #edb69033)}
+.logo-text{display:flex;align-items:baseline;flex-wrap:nowrap;gap:.32em;white-space:nowrap;font-size:46px;line-height:1}
+.logo-top{font-family:Manrope,sans-serif;font-weight:800;letter-spacing:.12em;font-size:.62em;color:var(--cream)}
+.logo-mid{font:italic 400 .5em "Playfair Display",Georgia,serif;color:var(--muted)}
+.logo-name{font:italic 500 1em "Playfair Display",Georgia,serif;color:var(--accent);letter-spacing:-.01em}
+.logo-dot{display:inline-block;width:.15em;height:.15em;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#c0394b;margin-left:.06em}
 .tagline span{display:block}
 .login-code{text-transform:none!important;letter-spacing:3px}
+@media(max-width:1100px) and (min-width:761px){.logo-text{font-size:40px}}
 @media(max-width:760px){
-  .logo{flex-direction:column;align-items:flex-start;gap:16px;margin:20px 0}
-  .logo-emblem{width:84px;height:84px}
-  .logo-top{font-size:17px}
-  .logo-mid{font-size:15px}
-  .logo-name{font-size:clamp(52px,16vw,70px)}
+  .logo{margin:20px 0}
+  .logo-emblem{width:72px;height:72px}
+  .logo-text{font-size:clamp(26px,8.6vw,44px)}
 }
+
