@@ -4,10 +4,10 @@
 //  - blocs "entries": une fiche par joueur (nom + sa personagem), clé = son code personnel
 // Sans le bon code, impossible de lire une fiche ni de savoir à qui elle appartient.
 
-export type Role = "suspeito" | "assassino" | "vitima";
+export type Role = "assassino" | "cumplice" | "testemunha" | "suspeito" | "vitima";
 export type Character = {
   id: string; name: string; occupation: string; role: Role;
-  story: string; secrets: string; alibi: string; information: string;
+  story: string; secrets: string; alibi: string; information: string; objective?: string;
 };
 export type Player = { id: string; name: string; code: string; characterId: string | null };
 export type PartyData = { characters: Character[]; players: Player[]; updatedAt: number };
