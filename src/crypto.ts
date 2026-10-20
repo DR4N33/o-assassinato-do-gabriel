@@ -5,16 +5,16 @@
 // Sans le bon code, impossible de lire une fiche ni de savoir à qui elle appartient.
 
 export type Role = "assassino" | "cumplice" | "testemunha" | "suspeito" | "vitima";
-export type Character = {
-  id: string; name: string; occupation: string; role: Role;
-  story: string; secrets: string; alibi: string; information: string; objective?: string;
-};
-// role : papel escolhido pela organização para este jogador (tem prioridade sobre o papel da personagem)
-export type Player = { id: string; name: string; code: string; characterId: string | null; role?: Role | null };
-export type PartyData = { characters: Character[]; players: Player[]; updatedAt: number };
+// Textos do dossiê, todos opcionais
+export type Dossier = { occupation?: string; story?: string; secrets?: string; alibi?: string; information?: string; objective?: string };
+// Cada jogador é a sua própria personagem: nome, código, papel e dossiê.
+export type Player = Dossier & { id: string; name: string; code: string; role?: Role | null; characterId?: string | null };
+// Formato antigo (separador Personagens), mantido só para ler festas antigas
+export type Character = Dossier & { id: string; name: string; role: Role };
+export type PartyData = { players: Player[]; characters?: Character[]; updatedAt: number };
 export type Box = { iv: string; ct: string };
 export type PartyFile = { v: 1; iter: number; salt: string; updatedAt: number; admin: Box; entries: Box[] };
-export type PlayerView = { name: string; character: Character | null; role?: Role | null; updatedAt: number };
+export type PlayerView = Dossier & { name: string; role: Role | null; updatedAt: number };
 
 export const ITERATIONS = 310_000;
 // Sans I, L, O, 0, 1 : pas de confusion à la lecture.
@@ -90,14 +90,22 @@ function shuffle<T>(list: T[]): T[] {
   return a;
 }
 
+const DOSSIER_KEYS = ["occupation", "story", "secrets", "alibi", "information", "objective"] as const;
+// Junta os textos do jogador com os de uma personagem antiga, se existir
+export function resolvePlayer(p: Player, characters: Character[] = []): Omit<PlayerView, "updatedAt"> {
+  const legacy = p.characterId ? characters.find((c) => c.id === p.characterId) : undefined;
+  const out: Omit<PlayerView, "updatedAt"> = { name: p.name, role: p.role || legacy?.role || null };
+  for (const k of DOSSIER_KEYS) out[k] = (p[k] || legacy?.[k] || "").trim();
+  return out;
+}
+
 export async function buildPartyFile(data: PartyData, password: string, iter = ITERATIONS): Promise<PartyFile> {
   const salt = random(16);
   const updatedAt = Date.now();
   const full: PartyData = { ...data, updatedAt };
   const admin = await seal(await deriveKey(password, salt, iter, "admin"), full);
   const entries = await Promise.all(data.players.map(async (p) => {
-    const character = data.characters.find((c) => c.id === p.characterId) ?? null;
-    const view: PlayerView = { name: p.name, character, role: p.role || character?.role || null, updatedAt };
+    const view: PlayerView = { ...resolvePlayer(p, data.characters), updatedAt };
     return seal(await deriveKey(normalizeCode(p.code), salt, iter, "player"), view);
   }));
   return { v: 1, iter, salt: toB64(salt), updatedAt, admin, entries: shuffle(entries) };

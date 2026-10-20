@@ -68,3 +68,4 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 .setup-card form{display:grid;gap:14px;margin-top:22px;max-width:420px}
 .pre{white-space:pre-line}
 @media(max-width:760px){.publish-bar{flex-direction:column;align-items:stretch}}
+.dossier-toggle{display:inline-flex;align-items:center;gap:6px;margin:4px 0;font-size:12px}.dossier-toggle svg{transition:transform .2s}.dossier-toggle.open svg{transform:rotate(180deg)}

@@ -6,31 +6,36 @@ import { buildPartyFile, generateCode, normalizeCode, openAdmin, openPlayer, typ
 const ITER = 1000; // rapide pour les tests
 const data: PartyData = {
   updatedAt: 0,
-  characters: [
-    { id: "c1", name: "Helena", occupation: "Herdeira", role: "assassino", story: "s1", secrets: "matou o Gabriel", alibi: "a1", information: "i1" },
-    { id: "c2", name: "Tomás", occupation: "Mordomo", role: "suspeito", story: "s2", secrets: "x", alibi: "a2", information: "i2" },
-  ],
   players: [
-    { id: "p1", name: "Ana", code: "K7M2QX", characterId: "c1" },
-    { id: "p2", name: "Rui", code: "ABCDEF", characterId: "c2" },
-    { id: "p3", name: "Zé", code: "HJKMNP", characterId: null },
+    { id: "p1", name: "Diogo", code: "K7M2QX", role: "assassino", occupation: "O amigo traído", secrets: "matou o Gabriel" },
+    { id: "p2", name: "Rui", code: "ABCDEF", role: "cumplice" },
+    { id: "p3", name: "Zé", code: "HJKMNP" },
   ],
 };
 
-test("cada código abre só a sua ficha", async () => {
+test("cada código abre só o seu papel e dossiê", async () => {
   const file = await buildPartyFile(data, "palavra-passe-secreta", ITER);
   assert.equal(file.entries.length, 3);
-  const ana = await openPlayer(file, "k7m-2qx");
-  assert.equal(ana?.name, "Ana");
-  assert.equal(ana?.character?.name, "Helena");
-  assert.equal(ana?.character?.role, "assassino");
+  const diogo = await openPlayer(file, "k7m-2qx");
+  assert.equal(diogo?.name, "Diogo");
+  assert.equal(diogo?.role, "assassino");
+  assert.equal(diogo?.occupation, "O amigo traído");
+  assert.equal(diogo?.secrets, "matou o Gabriel");
   const rui = await openPlayer(file, "ABC DEF");
-  assert.equal(rui?.character?.name, "Tomás");
+  assert.equal(rui?.role, "cumplice");
+  assert.equal(rui?.story, "");
   const ze = await openPlayer(file, "HJKMNP");
-  assert.equal(ze?.name, "Zé");
-  assert.equal(ze?.character, null);
+  assert.equal(ze?.role, null);
   assert.equal(await openPlayer(file, "ZZZZZZ"), null);
   assert.equal(await openPlayer(file, ""), null);
+});
+
+test("festas antigas com personagens continuam a funcionar", async () => {
+  const legacy: PartyData = { updatedAt: 0, characters: [{ id: "c1", name: "Helena", role: "testemunha", story: "vi tudo" }],
+    players: [{ id: "p1", name: "Ana", code: "QWERTY", characterId: "c1" }] };
+  const ana = await openPlayer(await buildPartyFile(legacy, "x".repeat(8), ITER), "QWERTY");
+  assert.equal(ana?.role, "testemunha");
+  assert.equal(ana?.story, "vi tudo");
 });
 
 test("organização com a palavra-passe certa", async () => {
@@ -43,7 +48,7 @@ test("organização com a palavra-passe certa", async () => {
 
 test("nada legível no ficheiro publicado", async () => {
   const text = JSON.stringify(await buildPartyFile(data, "palavra-passe-secreta", ITER));
-  for (const secret of ["Helena", "Ana", "assassino", "K7M2QX", "matou"]) assert.ok(!text.includes(secret), secret);
+  for (const secret of ["Diogo", "Rui", "assassino", "cumplice", "K7M2QX", "matou", "traído"]) assert.ok(!text.includes(secret), secret);
 });
 
 test("códigos gerados: 6 caracteres, sem ambiguidades, únicos", () => {
