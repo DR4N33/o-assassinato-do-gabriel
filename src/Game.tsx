@@ -329,8 +329,14 @@ export default function Game() {
   async function publish() {
     if (!data) return;
     if (online) {
+      // Junta os jogadores deste aparelho com os que já estão online (não apaga o trabalho feito noutro aparelho)
       const local = data;
-      if (await commit(() => local, "Enviar alterações guardadas neste aparelho")) setNotice("Enviado ✓ Os convidados veem dentro de 1–2 minutos.");
+      const merged = (remote: PartyData): PartyData => {
+        const byId = new Map(remote.players.map((p) => [p.id, p]));
+        for (const p of local.players) byId.set(p.id, p);
+        return { ...remote, players: [...byId.values()] };
+      };
+      if (await commit(merged, "Enviar alterações guardadas neste aparelho")) setNotice("Enviado ✓ Juntámos as alterações deste aparelho com as que já estavam online.");
       return;
     }
     setBusy(true); setError("");
