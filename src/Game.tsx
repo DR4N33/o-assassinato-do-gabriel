@@ -9,6 +9,7 @@ import {
   CODE_LENGTH, ITERATIONS, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
 } from "./crypto";
 import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
+import { Emblem, Logo } from "./Logo";
 
 const roles: Record<Role, string> = { assassino: "Assassino", cumplice: "Cúmplice", testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima" };
 // Mensagem mostrada ao jogador por baixo do papel
@@ -63,7 +64,7 @@ function download(name: string, text: string) {
 function RoleBanner({ role }: { role: Role }) {
   return <div className={`role-banner ${darkRoles.includes(role) ? "red" : ""}`}><span>O TEU PAPEL</span><strong>{roles[role] ?? role}</strong><p>{roleMessages[role] ?? ""}</p></div>;
 }
-function Brand() { return <a href="./" className="brand"><Fingerprint size={32}/><span>O ASSASSINATO<small>DO GABRIEL · HALLOWEEN</small></span></a>; }
+function Brand() { return <a href="./" className="brand"><Emblem size={36}/><span>O ASSASSINATO<small>DO GABRIEL · HALLOWEEN</small></span></a>; }
 
 export default function Game() {
   const [mode, setMode] = useState<"player" | "admin">("player"), [tab, setTab] = useState("players");
@@ -177,10 +178,20 @@ export default function Game() {
     e.preventDefault(); setBusy(true); setError("");
     try {
       const file = party ?? await fetchParty(); setParty(file);
-      if (!file) throw new Error("A festa ainda não foi publicada. Volta a tentar mais tarde.");
-      const v = await openPlayer(file, code);
-      if (!v) throw new Error("Código desconhecido. Confirma as letras e os números ou fala com a organização.");
-      store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode("");
+      const unknown = "Código desconhecido. Confirma as letras e os números ou fala com a organização.";
+      // 1) código de convidado
+      const v = file ? await openPlayer(file, code) : null;
+      if (v) { store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode(""); return; }
+      // 2) código da organização (André & Rosa) → bastidores
+      const secret = code.trim();
+      if (secret.length >= 8) {
+        try { await openOrg(secret, null, server); }
+        catch { throw new Error(unknown); }
+        setCode(""); setTab("players"); setMode("admin");
+        window.history.replaceState(null, "", "?mode=admin");
+        return;
+      }
+      throw new Error(file ? unknown : "A festa ainda não foi publicada. Volta a tentar mais tarde.");
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
   function logout() { store.del(KEY_CODE); setView(null); setHidden(false); }
@@ -188,9 +199,14 @@ export default function Game() {
   // ---------- Organisation ----------
   async function unlock(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");
-    try {
-      const creating = !party && !hasDraft;
-      if (creating) {
+    try { await openOrg(password, password2, true); }
+    catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  // Abre os bastidores com a palavra-passe da organização (usado no ecrã da Organização e no campo de entrada)
+  async function openOrg(password: string, password2: string | null, allowCreate: boolean) {
+    {
+      const creating = allowCreate && !party && !hasDraft;
+      if (creating && !server) {
         if (password.length < 8) throw new Error("Escolhe uma palavra-passe com pelo menos 8 caracteres.");
         if (password !== password2) throw new Error("As duas palavras-passe não coincidem.");
       }
@@ -224,7 +240,7 @@ export default function Game() {
       setOnline(connected);
       pw.current = password; setPassword(""); setPassword2("");
       if (newer && published) setNotice("Recuperámos alterações guardadas neste aparelho que ainda não foram publicadas.");
-    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+    }
   }
   function lock() {
     if (dirty && !window.confirm("Há alterações por publicar. Ficam guardadas neste aparelho. Sair mesmo assim?")) return;
@@ -369,7 +385,7 @@ export default function Game() {
   const visiblePlayers = data?.players.filter((p) => `${p.name} ${p.code}`.toLowerCase().includes(q)) || [];
 
   return <div className="app">
-    <header className="topbar"><Brand/><div className="top-actions"><span className="edition">NINGUÉM ESTÁ A SALVO</span><button className="quiet" onClick={() => switchMode(mode === "admin" ? "player" : "admin")}>{mode === "admin" ? <><Eye size={16}/> Área do jogador</> : <><LockKeyhole size={15}/> Organização</>}</button></div></header>
+    <header className="topbar"><Brand/><div className="top-actions"><span className="edition">NINGUÉM ESTÁ A SALVO</span>{mode === "admin" && <button className="quiet" onClick={() => switchMode("player")}><Eye size={16}/> Área do jogador</button>}</div></header>
     {notice && <div role="status" className="toast"><Check size={18}/>{notice}</div>}
 
     {mode === "admin" ? <div className="dashboard">
@@ -441,9 +457,9 @@ export default function Game() {
           <p className="closing">Confia no teu instinto. Desconfia de todos.</p></>
         : <div className="empty waiting"><VenetianMask size={48}/><h1>O teu papel<br/>está a caminho.</h1><p>Olá, {view.name}. A organização ainda está a decidir quem és esta noite.</p></div>}
         <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> Verificar atualizações</button>{error && <p className="error" role="alert">{error}</p>}</div> :
-      <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> UMA FESTA. UM CRIME. UM DE NÓS.</div><h1>O Assassinato<br/>do <em>Gabriel.</em></h1><p>Uma noite de Halloween. Um crime por resolver.<br/>O assassino está entre nós.</p><div className="intro-foot"><Fingerprint size={27}/><span>A verdade tem muitas versões.<br/><strong>Qual vai ser a tua?</strong></span></div></section>
+      <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> UMA FESTA. UM CRIME. UM DE NÓS.</div><h1 className="sr-only">O Assassinato do Gabriel</h1><Logo/><p className="tagline"><span>Uma noite de Halloween.</span><span>Um crime por resolver.</span><span>O assassino está entre nós.</span></p><div className="intro-foot"><Fingerprint size={27}/><span>A verdade tem muitas versões.<br/><strong>Qual vai ser a tua?</strong></span></div></section>
         <section className="login-card"><div className="file-mark">ARQUIVO PRIVADO <span>01 / ENTRADA</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>Entra no mistério.</h2><p>Introduz o código secreto que a organização te enviou para descobrires o teu papel esta noite.</p>
-          <form onSubmit={login}><label>O teu código<input className="code-input" required autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={20} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{CODE_LENGTH} letras e números, por exemplo K7M-2QX.</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? "A abrir o dossiê…" : "Descobrir o meu papel"}<ArrowRight size={18}/></button></form>
+          <form onSubmit={login}><label>O teu código<input className="code-input login-code" required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{CODE_LENGTH} letras e números, por exemplo K7M-2QX.</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? "A abrir o dossiê…" : "Descobrir o meu papel"}<ArrowRight size={18}/></button></form>
           <div className="login-note"><LockKeyhole size={14}/><span>Acesso exclusivo a jogadores convidados.<br/>Guarda a tua personagem em segredo.</span></div></section>
         <div className="player-footer">O ASSASSINATO DO GABRIEL <span>O assassino pode estar mesmo ao teu lado.</span></div></>}
     </main>}
