@@ -242,6 +242,11 @@ export default function Game() {
       if (newer && published) setNotice("Recuperámos alterações guardadas neste aparelho que ainda não foram publicadas.");
     }
   }
+  // Só possível enquanto nada foi publicado: apaga o rascunho deste aparelho e volta ao ecrã "Criar a festa"
+  function resetLocal() {
+    if (!window.confirm("Apagar a festa guardada neste aparelho e recomeçar? (Nada foi publicado ainda.)")) return;
+    store.del(KEY_DRAFT); setHasDraft(false); setError(""); setPassword(""); setPassword2("");
+  }
   function lock() {
     if (dirty && !window.confirm("Há alterações por publicar. Ficam guardadas neste aparelho. Sair mesmo assim?")) return;
     setData(null); pw.current = ""; dkey.current = null; setDirty(false); setOnline(false); setHasDraft(!!store.get(KEY_DRAFT));
@@ -402,7 +407,8 @@ export default function Game() {
               <button className="primary" disabled={busy}>{busy ? "A preparar…" : "Criar a festa"} <ArrowRight size={17}/></button></>
             : <><p>Introduz a palavra-passe da organização.</p>
               <label>Palavra-passe<input type="password" autoComplete="current-password" required autoFocus value={password} onChange={(e) => setPassword(e.target.value)}/></label>
-              <button className="primary" disabled={busy}>{busy ? "A abrir…" : "Entrar nos bastidores"} <ArrowRight size={17}/></button></>}
+              <button className="primary" disabled={busy}>{busy ? "A abrir…" : "Entrar nos bastidores"} <ArrowRight size={17}/></button>
+              {!party && <button type="button" className="text-button" onClick={resetLocal}>Esqueci-me da palavra-passe — recomeçar do zero</button>}</>}
             {error && <p role="alert" className="error">{error}</p>}
           </form>}
         </div> : <>
