@@ -8,7 +8,7 @@ export type Role = "assassino" | "cumplice" | "amante" | "agressor" | "amiga" | 
 // Textos do dossiê, todos opcionais
 export type Dossier = { occupation?: string; story?: string; secrets?: string; alibi?: string; information?: string; objective?: string };
 // Cada jogador é a sua própria personagem: nome, código, papel e dossiê.
-export type Player = Dossier & { id: string; name: string; code: string; role?: Role | null; characterId?: string | null };
+export type Player = Dossier & { id: string; name: string; code: string; role?: Role | null; lang?: "pt" | "fr"; characterId?: string | null };
 // Formato antigo (separador Personagens), mantido só para ler festas antigas
 export type Character = Dossier & { id: string; name: string; role: Role };
 // gh: ligação GitHub partilhada (token incluído) — só existe no bloco da organização, cifrado com a palavra-passe
@@ -16,7 +16,7 @@ export type SharedGitHub = { owner: string; repo: string; branch: string; token:
 export type PartyData = { players: Player[]; characters?: Character[]; gh?: SharedGitHub; updatedAt: number };
 export type Box = { iv: string; ct: string };
 export type PartyFile = { v: 1; iter: number; salt: string; updatedAt: number; admin: Box; entries: Box[] };
-export type PlayerView = Dossier & { name: string; role: Role | null; updatedAt: number };
+export type PlayerView = Dossier & { name: string; role: Role | null; lang?: "pt" | "fr"; updatedAt: number };
 
 export const ITERATIONS = 310_000;
 // Sans I, L, O, 0, 1 : pas de confusion à la lecture.
@@ -104,7 +104,7 @@ const DOSSIER_KEYS = ["occupation", "story", "secrets", "alibi", "information", 
 // Junta os textos do jogador com os de uma personagem antiga, se existir
 export function resolvePlayer(p: Player, characters: Character[] = []): Omit<PlayerView, "updatedAt"> {
   const legacy = p.characterId ? characters.find((c) => c.id === p.characterId) : undefined;
-  const out: Omit<PlayerView, "updatedAt"> = { name: p.name, role: p.role || legacy?.role || null };
+  const out: Omit<PlayerView, "updatedAt"> = { name: p.name, role: p.role || legacy?.role || null, ...(p.lang ? { lang: p.lang } : {}) };
   for (const k of DOSSIER_KEYS) out[k] = (p[k] || legacy?.[k] || "").trim();
   return out;
 }

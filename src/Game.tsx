@@ -10,23 +10,11 @@ import {
 } from "./crypto";
 import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
 import { Emblem, Logo, LogoText } from "./Logo";
+import { LANGS, T, type Lang } from "./i18n";
 
 const roles: Record<Role, string> = {
   assassino: "Assassino", cumplice: "Cúmplice", amante: "Amante", agressor: "Agressor", amiga: "Amiga", amigo: "Amigo", confidente: "Confidente",
   testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima",
-};
-// Mensagem mostrada ao jogador por baixo do papel
-const roleMessages: Record<Role, string> = {
-  assassino: "Foste tu. Guarda este segredo e cabe-te escapar às suspeitas até ao fim da noite.",
-  cumplice: "Sabes a verdade. Protege o assassino sem te denunciares.",
-  amante: "Há uma paixão que ninguém pode descobrir. Protege o teu segredo… ou usa-o a teu favor.",
-  agressor: "Houve violência esta noite, e tu estiveste no meio dela. Isso não faz de ti o assassino… pois não?",
-  amiga: "Eras próxima do Gabriel. Ajuda a descobrir a verdade, mas lembra-te: também tens algo a esconder.",
-  amigo: "Eras próximo do Gabriel. Ajuda a descobrir a verdade, mas lembra-te: também tens algo a esconder.",
-  confidente: "Alguém te contou um segredo que pode mudar tudo. Guarda-o… ou escolhe bem o momento de o revelar.",
-  testemunha: "Viste algo importante. Decide bem a quem o contas, e quando.",
-  suspeito: "Estás inocente, mas toda a gente tem algo a esconder. Descobre quem está a mentir.",
-  vitima: "O teu papel é especial. Segue as instruções do teu dossiê.",
 };
 const darkRoles: Role[] = ["assassino", "cumplice"];
 // Secções do dossiê (na primeira pessoa). As vazias não aparecem ao jogador.
@@ -44,7 +32,7 @@ function migrate(d: PartyData): PartyData {
   if (!d.characters?.length) return { players: d.players, gh: d.gh, updatedAt: d.updatedAt };
   return { updatedAt: d.updatedAt, gh: d.gh, players: d.players.map((p) => { const r = resolvePlayer(p, d.characters); return { id: p.id, code: p.code, ...r }; }) };
 }
-const KEY_CODE = "mystery_code", KEY_DRAFT = "mystery_draft", KEY_GITHUB = "mystery_github";
+const KEY_LANG = "mystery_lang", KEY_CODE = "mystery_code", KEY_DRAFT = "mystery_draft", KEY_GITHUB = "mystery_github";
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -58,7 +46,7 @@ const formatCode = (c: string) => c.length > 3 ? `${c.slice(0, 3)}-${c.slice(3)}
 async function fetchParty(): Promise<PartyFile | null> {
   const res = await fetch(`./party.json?t=${Date.now()}`, { cache: "no-store" });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Não foi possível carregar o jogo. Tenta novamente.");
+  if (!res.ok) throw new Error(T[currentLang()].loadError);
   const data: unknown = await res.json().catch(() => null);
   return isPartyFile(data) ? data : null;
 }
@@ -69,13 +57,21 @@ function download(name: string, text: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-function RoleBanner({ role }: { role: Role }) {
-  return <div className={`role-banner ${darkRoles.includes(role) ? "red" : ""}`}><span>O TEU PAPEL</span><strong>{roles[role] ?? role}</strong><p>{roleMessages[role] ?? ""}</p></div>;
+function currentLang(): Lang { const l = store.get(KEY_LANG); return l === "fr" ? "fr" : "pt"; }
+function RoleBanner({ role, lang }: { role: Role; lang: Lang }) {
+  const t = T[lang];
+  return <div className={`role-banner ${darkRoles.includes(role) ? "red" : ""}`}><span>{t.yourRole}</span><strong>{t.roles[role] ?? role}</strong><p>{t.roleMessages[role] ?? ""}</p></div>;
+}
+function LangSwitch({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
+  return <div className="lang-switch" role="group" aria-label="Língua / Langue">{LANGS.map((l) => <button key={l} className={l === lang ? "on" : ""} aria-pressed={l === lang} onClick={() => onChange(l)}>{l.toUpperCase()}</button>)}</div>;
 }
 function Brand() { return <a href="./" className="brand brand-logo" aria-label="O Assassinato do Gabriel"><Emblem size={36}/><LogoText/></a>; }
 
 export default function Game() {
   const [mode, setMode] = useState<"player" | "admin">("player"), [tab, setTab] = useState("players");
+  const [lang, setLangState] = useState<Lang>(currentLang);
+  const setLang = (l: Lang) => { setLangState(l); store.set(KEY_LANG, l); document.documentElement.lang = l === "fr" ? "fr" : "pt-PT"; };
+  const t = T[lang];
   const [party, setParty] = useState<PartyFile | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   // joueur
@@ -102,10 +98,10 @@ export default function Game() {
       const file = await fetchParty(); setParty(file);
       if (c && file) {
         const v = await openPlayer(file, c);
-        if (v) { setView(v); setCode(""); store.set(KEY_CODE, normalizeCode(c)); }
+        if (v) { setView(v); setCode(""); store.set(KEY_CODE, normalizeCode(c)); if (v.lang) setLang(v.lang); }
         else {
           setView(null); store.del(KEY_CODE);
-          if (linkCode) throw new Error("Código desconhecido. Confirma as letras e os números ou fala com a organização.");
+          if (linkCode) throw new Error(T[currentLang()].unknownCode);
         }
       }
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
@@ -191,10 +187,10 @@ export default function Game() {
     e.preventDefault(); setBusy(true); setError("");
     try {
       const file = party ?? await fetchParty(); setParty(file);
-      const unknown = "Código desconhecido. Confirma as letras e os números ou fala com a organização.";
+      const unknown = t.unknownCode;
       // 1) código de convidado
       const v = file ? await openPlayer(file, code) : null;
-      if (v) { store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode(""); return; }
+      if (v) { store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode(""); if (v.lang) setLang(v.lang); return; }
       // 2) código da organização (André & Rosa) → bastidores
       const secret = code.trim();
       if (secret.length >= 8) {
@@ -204,7 +200,7 @@ export default function Game() {
         window.history.replaceState(null, "", "?mode=admin");
         return;
       }
-      throw new Error(file ? unknown : "A festa ainda não foi publicada. Volta a tentar mais tarde.");
+      throw new Error(file ? unknown : t.notPublished);
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
   function logout() { store.del(KEY_CODE); setView(null); setHidden(false); }
@@ -324,8 +320,8 @@ export default function Game() {
   function editPlayer(p?: Player) {
     setError("");
     const d: Record<string, string> = p
-      ? { id: p.id, name: p.name, code: formatCode(p.code), role: p.role || "", occupation: p.occupation || "" }
-      : { id: "", name: "", code: formatCode(generateCode(data?.players.map((x) => x.code))), role: "", occupation: "" };
+      ? { id: p.id, name: p.name, code: formatCode(p.code), role: p.role || "", occupation: p.occupation || "", lang: p.lang || "pt" }
+      : { id: "", name: "", code: formatCode(generateCode(data?.players.map((x) => x.code))), role: "", occupation: "", lang: "pt" };
     for (const s of sections) d[s.key] = p?.[s.key] || "";
     setDraft(d); setShowDossier(!!p && hasDossier(p)); setModal("player");
   }
@@ -336,7 +332,7 @@ export default function Game() {
     const name = draft.name.trim(), c = normalizeCode(draft.code || "");
     if (!name) { setError("Indica o nome do jogador."); return; }
     if (c.length < 4) { setError("O código deve ter pelo menos 4 letras ou números."); return; }
-    const p: Player = { id: draft.id || uid(), name, code: c, role: (draft.role || null) as Role | null, occupation: draft.occupation.trim() };
+    const p: Player = { id: draft.id || uid(), name, code: c, role: (draft.role || null) as Role | null, occupation: draft.occupation.trim(), ...(draft.lang === "fr" ? { lang: "fr" as const } : {}) };
     for (const s of sections) p[s.key] = draft[s.key] || "";
     const ok = await commit((d) => {
       if (d.players.some((x) => x.code === c && x.id !== p.id)) throw new Error("Este código já pertence a outro jogador. Gera outro.");
@@ -413,7 +409,9 @@ export default function Game() {
     try { await navigator.clipboard.writeText(text); setNotice(ok); }
     catch { setError("Não foi possível copiar automaticamente."); }
   }
-  const invite = (p: Player) => `O Assassinato do Gabriel espera por ti, ${p.name}. Abre ${siteUrl()}?codigo=${p.code} ou entra em ${siteUrl()} com o teu código: ${formatCode(p.code)}. Guarda os teus segredos!`;
+  const invite = (p: Player) => p.lang === "fr"
+    ? `L'assassinat de Gabriel t'attend, ${p.name}. Ouvre ${siteUrl()}?codigo=${p.code} ou va sur ${siteUrl()} avec ton code : ${formatCode(p.code)}. Garde tes secrets !`
+    : `O Assassinato do Gabriel espera por ti, ${p.name}. Abre ${siteUrl()}?codigo=${p.code} ou entra em ${siteUrl()} com o teu código: ${formatCode(p.code)}. Guarda os teus segredos!`;
 
   const withRole = data?.players.filter((p) => p.role).length || 0;
   const withDossier = data?.players.filter(hasDossier).length || 0;
@@ -421,7 +419,7 @@ export default function Game() {
   const visiblePlayers = data?.players.filter((p) => `${p.name} ${p.code}`.toLowerCase().includes(q)) || [];
 
   return <div className="app">
-    <header className="topbar"><Brand/><div className="top-actions"><span className="edition">NINGUÉM ESTÁ A SALVO</span>{mode === "admin" && <button className="quiet" onClick={() => switchMode("player")}><Eye size={16}/> Área do jogador</button>}</div></header>
+    <header className="topbar"><Brand/><div className="top-actions"><span className="edition">{mode === "admin" ? T.pt.edition : t.edition}</span>{mode === "player" && <LangSwitch lang={lang} onChange={setLang}/>}{mode === "admin" && <button className="quiet" onClick={() => switchMode("player")}><Eye size={16}/> Área do jogador</button>}</div></header>
     {notice && <div role="status" className="toast"><Check size={18}/>{notice}</div>}
 
     {mode === "admin" ? <div className="dashboard">
@@ -476,7 +474,7 @@ export default function Game() {
           <section className="panel"><div className="panel-toolbar"><h2>Lista de convidados<span>{data.players.length}</span></h2><div className="search"><Search size={16}/><input aria-label="Pesquisar" placeholder="Procurar jogador…" value={search} onChange={(e) => setSearch(e.target.value)}/></div></div>
             <div className="table-wrap"><table><thead><tr><th>JOGADOR</th><th>PAPEL</th><th>ESTADO</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{visiblePlayers.map((p) => {
               const role = p.role || null, dossier = hasDossier(p);
-              return <tr key={p.id}><td><div className="person"><div className="avatar">{p.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}</div><div><strong>{p.name}</strong><small className="code-chip">{formatCode(p.code)}</small></div></div></td>
+              return <tr key={p.id}><td><div className="person"><div className="avatar">{p.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}</div><div><strong>{p.name}{p.lang === "fr" && <span className="lang-chip">FR</span>}</strong><small className="code-chip">{formatCode(p.code)}</small></div></div></td>
                 <td>{role ? <span className={`status ${darkRoles.includes(role) ? "killer" : "ready"}`}>{roles[role]}</span> : <button className="text-button" onClick={() => editPlayer(p)}><Plus size={14}/> Escolher papel</button>}</td>
                 <td><span className={`status ${role ? "ready" : "pending"}`}>{!role ? "Por preparar" : dossier ? "Papel + dossiê" : "Papel escolhido"}</span></td>
                 <td><div className="row-actions"><button aria-label={`Copiar convite de ${p.name}`} title="Copiar convite com o código" onClick={() => copy(invite(p), `Convite de ${p.name} copiado.`)}><Copy size={16}/></button><button aria-label={`Editar ${p.name}`} onClick={() => editPlayer(p)}><Pencil size={16}/></button><button aria-label={`Eliminar ${p.name}`} onClick={() => setConfirm({ id: p.id, name: p.name })}><Trash2 size={16}/></button></div></td></tr>;
@@ -489,23 +487,24 @@ export default function Game() {
     </div> :
 
     <main className={`player-main ${view ? "has-player" : ""}`}>
-      {loading ? <div className="loading"><Fingerprint size={40}/><p>A abrir o teu dossiê…</p></div> : view ? <div className="dossier"><div className="dossier-top"><span className="eyebrow">DOSSIÊ CONFIDENCIAL · {view.name}</span><button className="quiet" onClick={logout}><LogOut size={16}/> Sair</button></div>
-        {view.role || hasDossier(view) ? <><div className="dossier-title"><div><div className="eyebrow">ESTA NOITE, TU ÉS</div><h1>{hidden ? "••••••••" : view.name}</h1>{(hidden || view.occupation) && <p>{hidden ? "Dossiê oculto" : view.occupation}</p>}</div><VenetianMask size={68}/></div><div className="privacy-bar"><span><LockKeyhole size={15}/> Apenas para os teus olhos.</span><button className="quiet" onClick={() => setHidden(!hidden)}><Eye size={16}/>{hidden ? "Mostrar dossiê" : "Ocultar dossiê"}</button></div>
-          {!hidden && <>{view.role && <RoleBanner role={view.role}/>}{hasDossier(view) && <div className="dossier-sections">{sections.filter((s) => (view[s.key] || "").trim()).map((s) => { const Icon = sectionIcons[s.key]; return <section key={s.key}><Icon size={21}/><h2>{s.title}</h2><p className="pre">{view[s.key]}</p></section>; })}</div>}</>}
-          <p className="closing">Confia no teu instinto. Desconfia de todos.</p></>
-        : <div className="empty waiting"><VenetianMask size={48}/><h1>O teu papel<br/>está a caminho.</h1><p>Olá, {view.name}. A organização ainda está a decidir quem és esta noite.</p></div>}
-        <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> Verificar atualizações</button>{error && <p className="error" role="alert">{error}</p>}</div> :
-      <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> UMA FESTA. UM CRIME. UM DE NÓS.</div><h1 className="sr-only">O Assassinato do Gabriel</h1><Logo/><p className="tagline"><span>Uma noite de Halloween.</span><span>Um crime por resolver.</span><span>O assassino está entre nós.</span></p><div className="intro-foot"><Fingerprint size={27}/><span>A verdade tem muitas versões.<br/><strong>Qual vai ser a tua?</strong></span></div></section>
-        <section className="login-card"><div className="file-mark">ARQUIVO PRIVADO <span>01 / ENTRADA</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>Entra no mistério.</h2><p>Introduz o código secreto que a organização te enviou para descobrires o teu papel esta noite.</p>
-          <form onSubmit={login}><label>O teu código<input className="code-input login-code" required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{CODE_LENGTH} letras e números, por exemplo K7M-2QX.</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? "A abrir o dossiê…" : "Descobrir o meu papel"}<ArrowRight size={18}/></button></form>
-          <div className="login-note"><LockKeyhole size={14}/><span>Acesso exclusivo a jogadores convidados.<br/>Guarda a tua personagem em segredo.</span></div></section>
-        <div className="player-footer">O ASSASSINATO DO GABRIEL <span>O assassino pode estar mesmo ao teu lado.</span></div></>}
+      {loading ? <div className="loading"><Fingerprint size={40}/><p>{t.loading}</p></div> : view ? <div className="dossier"><div className="dossier-top"><span className="eyebrow">{t.confidential} · {view.name}</span><button className="quiet" onClick={logout}><LogOut size={16}/> {t.leave}</button></div>
+        {view.role || hasDossier(view) ? <><div className="dossier-title"><div><div className="eyebrow">{t.tonight}</div><h1>{hidden ? "••••••••" : view.name}</h1>{(hidden || view.occupation) && <p>{hidden ? t.hiddenFile : view.occupation}</p>}</div><VenetianMask size={68}/></div><div className="privacy-bar"><span><LockKeyhole size={15}/> {t.eyesOnly}</span><button className="quiet" onClick={() => setHidden(!hidden)}><Eye size={16}/>{hidden ? t.show : t.hide}</button></div>
+          {!hidden && <>{view.role && <RoleBanner role={view.role} lang={lang}/>}{hasDossier(view) && <div className="dossier-sections">{sections.filter((s) => (view[s.key] || "").trim()).map((s) => { const Icon = sectionIcons[s.key]; return <section key={s.key}><Icon size={21}/><h2>{t.sections[s.key]}</h2><p className="pre">{view[s.key]}</p></section>; })}</div>}</>}
+          <p className="closing">{t.closing}</p></>
+        : <div className="empty waiting"><VenetianMask size={48}/><h1>{t.waitingTitle[0]}<br/>{t.waitingTitle[1]}</h1><p>{t.waitingText(view.name)}</p></div>}
+        <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> {t.checkUpdates}</button>{error && <p className="error" role="alert">{error}</p>}</div> :
+      <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> {t.eyebrow}</div><h1 className="sr-only">O Assassinato do Gabriel</h1><Logo/><p className="tagline">{t.tagline.map((line) => <span key={line}>{line}</span>)}</p><div className="intro-foot"><Fingerprint size={27}/><span>{t.truth[0]}<br/><strong>{t.truth[1]}</strong></span></div></section>
+        <section className="login-card"><div className="file-mark">{t.fileMark} <span>{t.entry}</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>{t.enterTitle}</h2><p>{t.enterText}</p>
+          <form onSubmit={login}><label>{t.codeLabel}<input className="code-input login-code" required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{t.codeHint}</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.discover}<ArrowRight size={18}/></button></form>
+          <div className="login-note"><LockKeyhole size={14}/><span>{t.accessNote[0]}<br/>{t.accessNote[1]}</span></div></section>
+        <div className="player-footer">O ASSASSINATO DO GABRIEL <span>{t.footer}</span></div></>}
     </main>}
 
     {modal === "player" && data && <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}><section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="modal"><button className="close" aria-label="Fechar" onClick={() => setModal(null)}><X/></button><div className="eyebrow">NOS BASTIDORES</div><h2 id="dialog-title">{draft.id ? "Editar" : "Adicionar"} jogador</h2>
       <form onSubmit={save}><label>Nome do jogador<input autoFocus required maxLength={100} value={draft.name} onChange={(e) => field("name", e.target.value)} placeholder="Ex.: Diogo"/></label>
         <label>Código secreto<div className="code-row"><input className="code-input" required maxLength={20} value={draft.code} onChange={(e) => field("code", e.target.value.toUpperCase())}/><button type="button" className="secondary" title="Gerar outro código" onClick={() => field("code", formatCode(generateCode(data.players.map((p) => p.code))))}><Dices size={16}/></button></div><small>Gerado automaticamente. É com ele que o jogador entra.</small></label>
         <label>Papel<select value={draft.role || ""} onChange={(e) => field("role", e.target.value)}><option value="">Escolher mais tarde</option>{Object.entries(roles).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select><small>É o que o jogador vê em "O teu papel" quando entra com o código.</small></label>
+        <label>Língua do jogador<select value={draft.lang || "pt"} onChange={(e) => field("lang", e.target.value)}><option value="pt">Português</option><option value="fr">Français</option></select><small>A página dele abre nesta língua. Escrevam o dossiê dele nesta língua.</small></label>
         <button type="button" className={`text-button dossier-toggle ${showDossier ? "open" : ""}`} onClick={() => setShowDossier(!showDossier)}><ChevronDown size={15}/> Dossiê (opcional): história, segredo, álibi…</button>
         {showDossier && <>
           <label>Subtítulo<input maxLength={100} value={draft.occupation} onChange={(e) => field("occupation", e.target.value)} placeholder="Ex.: O amigo traído"/></label>
@@ -514,9 +513,9 @@ export default function Game() {
         {error && <p role="alert" className="error">{error}</p>}<div className="modal-actions"><button type="button" className="quiet" disabled={busy} onClick={() => setModal(null)}>Cancelar</button><button className="primary" disabled={busy}>{busy ? "A guardar…" : "Guardar"}<Check size={16}/></button></div></form></section></div>}
     {modal === "qr" && <div className="overlay qr-overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}><section role="dialog" aria-modal="true" aria-labelledby="qr-title" className="modal qr-sheet"><button className="close no-print" aria-label="Fechar" onClick={() => setModal(null)}><X/></button>
       <div className="qr-brand"><Fingerprint size={30}/><span>O ASSASSINATO DO GABRIEL</span></div>
-      <h2 id="qr-title">Entra no mistério.</h2>
+      <h2 id="qr-title">Entra no mistério.<small>Entre dans le mystère.</small></h2>
       <img className="qr-img" alt={`QR code para ${siteUrl()}`} src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=12&data=${encodeURIComponent(siteUrl())}`}/>
-      <ol className="qr-steps"><li>Lê o QR code com o telemóvel</li><li>Mete o teu <strong>código secreto</strong> de 6 caracteres</li><li>Descobre o teu papel… e guarda-o para ti</li></ol>
+      <ol className="qr-steps"><li>Lê o QR code com o telemóvel<small>Scanne le QR code avec ton téléphone</small></li><li>Mete o teu <strong>código secreto</strong> de 6 caracteres<small>Saisis ton <strong>code secret</strong> de 6 caractères</small></li><li>Descobre o teu papel… e guarda-o para ti<small>Découvre ton rôle… et garde-le pour toi</small></li></ol>
       <p className="qr-url">{siteUrl().replace(/^https?:\/\//, "")}</p>
       <div className="modal-actions no-print"><button className="quiet" onClick={() => setModal(null)}>Fechar</button><button className="primary" onClick={() => window.print()}><Printer size={16}/> Imprimir</button></div>
     </section></div>}

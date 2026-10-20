@@ -114,3 +114,12 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 @media(max-width:760px){.brand-logo{gap:9px}.brand-logo .logo-text{font-size:clamp(17px,5.4vw,22px)}.brand-logo .emblem{width:30px;height:30px}.edition{display:none}}
 .sync-pill{display:none}
 @media(max-width:760px){.sync-pill{display:inline-flex;align-items:center;gap:8px;margin:0 0 16px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--muted)}.sync-pill span{width:7px;height:7px;border-radius:50%;background:#e0a35a}.sync-pill.ok span{background:#7fc28a}}
+/* Língua */
+.lang-switch{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.lang-switch button{padding:6px 11px;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--muted)}
+.lang-switch button.on{background:var(--accent);color:#1a1014}
+.lang-chip{display:inline-block;margin-left:8px;padding:1px 6px;border:1px solid var(--line);border-radius:4px;font-size:9px;letter-spacing:1px;color:var(--accent);vertical-align:middle}
+.qr-steps small{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-bottom:6px}
+.qr-sheet h2 small{display:block;font:italic 16px "Playfair Display",serif;color:var(--muted);margin-top:4px}
+@media print{.qr-steps small,.qr-sheet h2 small{color:#555!important}}
+@media(max-width:760px){.top-actions{gap:12px}.lang-switch button{padding:5px 9px}}
