@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+const origin='http://127.0.0.1:5173';
+const request=async(method,path,body,cookie='')=>{
+ const r=await fetch(origin+path,{method,headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie},body:body?JSON.stringify(body):undefined,redirect:'manual'});
+ return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]};
+};
+const auth=await fetch(origin+'/signin-with-chatgpt?return_to=/',{redirect:'manual'});
+const adminCookie=auth.headers.get('set-cookie')?.split(';')[0];
+assert.ok(adminCookie,'local sign-in cookie');
+let r=await request('GET','/api/game?mode=admin',undefined,adminCookie);
+if(r.data.setup){r=await request('POST','/api/game',{action:'setup'},adminCookie);assert.equal(r.status,200);}
+const post=(body,cookie=adminCookie)=>request('POST','/api/game',body,cookie);
+r=await request('GET','/api/game?mode=admin');assert.equal(r.status,403);
+r=await post({action:'saveCharacter',name:'Teste privado',role:'assassino',story:'História QA',secrets:'Segredo QA',alibi:'Álibi QA',information:'Informação QA'},'');assert.equal(r.status,403);
+r=await post({action:'saveCharacter',name:'Teste privado',role:'assassino',story:'História QA',secrets:'Segredo QA',alibi:'Álibi QA',information:'Informação QA'});assert.equal(r.status,200);
+r=await request('GET','/api/game?mode=admin',undefined,adminCookie);
+const c=r.data.characters.find(c=>c.name==='Teste privado');
+assert.ok(c);
+r=await post({action:'savePlayer',name:'Jogador QA',phone:'+351 900 000 001',characterId:c.id});assert.equal(r.status,200);
+r=await post({action:'savePlayer',name:'Duplicado QA',phone:'+351900000001'});assert.equal(r.status,409);
+r=await post({action:'savePlayer',name:'Personagem duplicada QA',phone:'+351900000002',characterId:c.id});assert.equal(r.status,409);
+r=await post({action:'login',phone:'+351900999999'},'');assert.equal(r.status,404);
+r=await post({action:'login',phone:'00351 900 000 001'},'');assert.equal(r.status,200);
+const playerCookie=r.cookie;assert.ok(playerCookie);
+r=await request('GET','/api/game',undefined,playerCookie);assert.equal(r.data.character.secrets,'Segredo QA');assert.equal(r.data.players,undefined);assert.equal(r.data.player.phone,undefined);
+r=await request('GET','/api/game?mode=admin',undefined,playerCookie);assert.equal(r.status,403);
+r=await post({action:'settings',rosa:'intruso@example.com'},playerCookie);assert.equal(r.status,403);
+r=await request('GET','/api/game?mode=admin',undefined,adminCookie);
+const p=r.data.players.find(p=>p.phone==='+351900000001');assert.ok(p.lastSeen);
+r=await post({action:'deleteCharacter',id:c.id});assert.equal(r.status,200);
+r=await request('GET','/api/game',undefined,playerCookie);assert.equal(r.data.character,null);
+r=await post({action:'deletePlayer',id:p.id});assert.equal(r.status,200);
+r=await request('GET','/api/game',undefined,playerCookie);assert.equal(r.data.player,null);
+const csrf=await fetch(origin+'/api/game',{method:'POST',headers:{Origin:'https://other.example','Content-Type':'application/json',Cookie:adminCookie},body:JSON.stringify({action:'settings',rosa:''})});assert.equal(csrf.status,403);
+console.log('PASS: organization access, character creation, player creation, duplicate phone and assignment rejection, phone normalization, private dossier isolation, unauthorized writes, deletion and session revocation, cross-origin protection.');
