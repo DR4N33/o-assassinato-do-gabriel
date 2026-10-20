@@ -28,16 +28,23 @@ export function Emblem({ size = 120, className = "" }: { size?: number; classNam
   );
 }
 
+// Texto do logotipo numa linha: O ASSASSINATO do Gabriel.
+export function LogoText() {
+  return (
+    <span className="logo-text">
+      <span className="logo-top">O ASSASSINATO</span>
+      <span className="logo-mid">do</span>
+      <span className="logo-name">Gabriel<b className="logo-dot" /></span>
+    </span>
+  );
+}
+
 // Letreiro completo para o ecrã de entrada
 export function Logo() {
   return (
     <div className="logo" role="img" aria-label="O Assassinato do Gabriel">
       <Emblem className="logo-emblem" />
-      <div className="logo-text">
-        <span className="logo-top">O ASSASSINATO</span>
-        <span className="logo-mid">do</span>
-        <span className="logo-name">Gabriel<b className="logo-dot" /></span>
-      </div>
+      <LogoText />
     </div>
   );
 }

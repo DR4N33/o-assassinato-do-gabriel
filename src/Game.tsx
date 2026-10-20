@@ -9,7 +9,7 @@ import {
   CODE_LENGTH, ITERATIONS, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
 } from "./crypto";
 import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
-import { Emblem, Logo } from "./Logo";
+import { Emblem, Logo, LogoText } from "./Logo";
 
 const roles: Record<Role, string> = { assassino: "Assassino", cumplice: "Cúmplice", testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima" };
 // Mensagem mostrada ao jogador por baixo do papel
@@ -64,7 +64,7 @@ function download(name: string, text: string) {
 function RoleBanner({ role }: { role: Role }) {
   return <div className={`role-banner ${darkRoles.includes(role) ? "red" : ""}`}><span>O TEU PAPEL</span><strong>{roles[role] ?? role}</strong><p>{roleMessages[role] ?? ""}</p></div>;
 }
-function Brand() { return <a href="./" className="brand"><Emblem size={36}/><span>O ASSASSINATO<small>DO GABRIEL · HALLOWEEN</small></span></a>; }
+function Brand() { return <a href="./" className="brand brand-logo" aria-label="O Assassinato do Gabriel"><Emblem size={36}/><LogoText/></a>; }
 
 export default function Game() {
   const [mode, setMode] = useState<"player" | "admin">("player"), [tab, setTab] = useState("players");
