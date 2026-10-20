@@ -1,9 +1,0 @@
-packages:
-  - .
-storeDir: .sites-runtime/pnpm-store
-nodeLinker: hoisted
-allowBuilds:
-  esbuild: true
-  sharp: true
-  workerd: true
-cacheDir: .sites-runtime/pnpm-cache
