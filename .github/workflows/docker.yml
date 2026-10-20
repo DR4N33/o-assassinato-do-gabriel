@@ -15,12 +15,12 @@ jobs:
         run: docker build -t assassinato-test .
       - name: Arrancar e testar
         run: |
-          docker run -d --name t -p 8080:8080 -e ADMIN_PASSWORD=palavra-passe-teste assassinato-test
-          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api/health && break; sleep 1; done
-          page="$(curl -fs http://127.0.0.1:8080/)"; echo "$page" | grep "O Assassinato do Gabriel" > /dev/null
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/party.json)" = 404
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer errada!!' http://127.0.0.1:8080/api/login)" = 401
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer palavra-passe-teste' http://127.0.0.1:8080/api/login)" = 200
+          docker run -d --name t -p 127.0.0.1:18080:8080 -e ADMIN_PASSWORD=palavra-passe-teste assassinato-test
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:18080/api/health && break; sleep 1; done
+          page="$(curl -fs http://127.0.0.1:18080/)"; echo "$page" | grep "O Assassinato do Gabriel" > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/party.json)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer errada!!' http://127.0.0.1:18080/api/login)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer palavra-passe-teste' http://127.0.0.1:18080/api/login)" = 200
           docker exec t sh -c 'test -w /data'
           echo "Imagem OK"
       - if: always()
