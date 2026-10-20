@@ -7,7 +7,7 @@ Aplicação em português para uma festa Murder Mystery de Halloween. Funciona d
 
 ## Como funciona
 
-- **Organização** (`?mode=admin`): protegida por uma palavra-passe. Adicionam-se os jogadores e escolhe-se o papel de cada um (Assassino, Cúmplice, Amante, Agressor, Amiga, Amigo, Testemunha, Suspeito, Vítima), com um dossiê opcional (história, segredo, álibi…). Cada jogador recebe um **código secreto** de 6 caracteres (ex.: `K7M-2QX`).
+- **Organização** (`?mode=admin`): protegida por uma palavra-passe. Adicionam-se os jogadores e escolhe-se o papel de cada um (Assassino, Cúmplice, Amante, Agressor, Amiga, Amigo, Confidente, Testemunha, Suspeito, Vítima), com um dossiê opcional (história, segredo, álibi…). Cada jogador recebe um **código secreto** de 6 caracteres (ex.: `K7M-2QX`).
 - **Jogadores**: abrem o site e introduzem o seu código (ou usam o link pessoal `?codigo=…`). Só veem o seu próprio papel e dossiê.
 - **Segurança**: tudo é guardado em `public/party.json`, **cifrado** no navegador (AES-256-GCM, chave PBKDF2-SHA256). O bloco da organização abre-se com a palavra-passe; cada ficha de jogador abre-se apenas com o código desse jogador. Mesmo com o repositório público, ninguém lê os segredos sem a chave.
 
