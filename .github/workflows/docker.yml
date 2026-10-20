@@ -1,0 +1,27 @@
+name: Testar imagem Docker
+
+on:
+  push:
+    branches: [main]
+    paths: ["Dockerfile", "docker-compose.yml", "server/**", "src/**", "package.json", ".github/workflows/docker.yml"]
+  workflow_dispatch:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem
+        run: docker build -t assassinato-test .
+      - name: Arrancar e testar
+        run: |
+          docker run -d --name t -p 8080:8080 -e ADMIN_PASSWORD=palavra-passe-teste assassinato-test
+          for i in $(seq 1 20); do curl -fs http://127.0.0.1:8080/api/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:8080/ | grep -q "O Assassinato do Gabriel"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/party.json)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer errada!!' http://127.0.0.1:8080/api/login)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Authorization: Bearer palavra-passe-teste' http://127.0.0.1:8080/api/login)" = 200
+          docker exec t sh -c 'test -w /data'
+          echo "Imagem OK"
+      - if: always()
+        run: docker logs t || true

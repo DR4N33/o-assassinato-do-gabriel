@@ -8,7 +8,7 @@ import {
   buildPartyFile, draftKey, generateCode, isPartyFile, normalizeCode, openAdmin, openDraft, openPlayer, resolvePlayer, sealDraft,
   CODE_LENGTH, ITERATIONS, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
 } from "./crypto";
-import { ConflictError, fetchRemote, guessTarget, writeRemote, type GitHubTarget } from "./github";
+import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
 
 const roles: Record<Role, string> = { assassino: "Assassino", cumplice: "Cúmplice", testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima" };
 // Mensagem mostrada ao jogador por baixo do papel
@@ -81,6 +81,9 @@ export default function Game() {
   const [newPw, setNewPw] = useState("");
   // online = token GitHub configurado: cada Guardar grava logo no repositório
   const [online, setOnline] = useState(false), remoteSha = useRef<string | null>(null);
+  // server = a app corre no Docker: grava no próprio servidor, sem token GitHub
+  const [server, setServer] = useState(false);
+  const storeFor = (srv = server, target = gh): Store => srv ? serverStore(() => pw.current) : githubStore(target);
 
   // linkCode : code reçu via le lien d'invitation (?codigo=…) ; sinon on reprend celui mémorisé sur l'appareil.
   async function loadPlayer(linkCode?: string) {
@@ -98,16 +101,16 @@ export default function Game() {
       }
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }
-  async function loadAdmin() {
+  async function loadAdmin(srv = server) {
     setLoading(true); setError("");
     try {
+      if (srv) { setParty((await storeFor(true).fetch())?.file ?? null); return; }
       // Com GitHub ligado neste aparelho, a versão do repositório é a mais recente (o Pages demora 1–2 min)
       let saved: GitHubTarget | null = null;
       try { saved = JSON.parse(store.get(KEY_GITHUB) || "null"); } catch { /* ignorado */ }
-      const remote = saved?.token ? await fetchRemote({ ...guessTarget(), ...saved }).catch(() => null) : null;
+      const remote = saved?.token ? await githubStore({ ...guessTarget(), ...saved }).fetch().catch(() => null) : null;
       setParty(remote?.file ?? await fetchParty());
-    } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
-    setHasDraft(!!store.get(KEY_DRAFT));
+    } catch (e) { setError((e as Error).message); } finally { setLoading(false); setHasDraft(!!store.get(KEY_DRAFT)); }
   }
 
   useEffect(() => {
@@ -117,7 +120,10 @@ export default function Game() {
     try { const saved = JSON.parse(store.get(KEY_GITHUB) || "null"); if (saved) setGh((g) => ({ ...g, ...saved })); } catch { /* ignoré */ }
     const fromLink = params.get("codigo");
     if (fromLink) { window.history.replaceState(null, "", window.location.pathname); setCode(fromLink); }
-    if (m === "admin") void loadAdmin(); else void loadPlayer(fromLink || undefined);
+    void (async () => {
+      const srv = await detectServer(); setServer(srv);
+      if (m === "admin") await loadAdmin(srv); else await loadPlayer(fromLink || undefined);
+    })();
   }, []);
   useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(""), 5000); return () => clearTimeout(t); }, [notice]);
   // Sauvegarde locale chiffrée de chaque modification
@@ -189,9 +195,13 @@ export default function Game() {
         if (password !== password2) throw new Error("As duas palavras-passe não coincidem.");
       }
       let source = party, connected = false;
-      if (gh.token) {
+      if (server) {
+        const remote = await storeFor().fetch();
+        if (!remote) await serverLogin(password);
+        source = remote?.file ?? null; remoteSha.current = remote?.sha ?? null; connected = true; setParty(source);
+      } else if (gh.token) {
         try {
-          const remote = await fetchRemote(gh);
+          const remote = await githubStore(gh).fetch();
           source = remote?.file ?? null; remoteSha.current = remote?.sha ?? null; connected = true; setParty(source);
         } catch (err) { setNotice(`Sem ligação ao GitHub: ${(err as Error).message}`); }
       }
@@ -230,14 +240,15 @@ export default function Game() {
     setBusy(true); setError("");
     try {
       for (let attempt = 0; attempt < 4; attempt++) {
-        const remote = await fetchRemote(gh);
+        const st = storeFor();
+        const remote = await st.fetch();
         const base = remote ? await openAdmin(remote.file, pw.current) : { players: [], updatedAt: 0 };
         if (!base) throw new Error("A palavra-passe da festa foi alterada noutro aparelho. Fecha os bastidores e volta a entrar.");
         const next: PartyData = { ...op(migrate(base)), updatedAt: Date.now() };
         const password = newPassword ?? pw.current;
         const file = await buildPartyFile(next, password, remote?.file.iter ?? ITERATIONS, newPassword ? undefined : remote?.file.salt);
         try {
-          remoteSha.current = await writeRemote(gh, file, remote?.sha ?? null, message);
+          remoteSha.current = await st.write(file, remote?.sha ?? null, message);
         } catch (err) { if (err instanceof ConflictError) continue; throw err; }
         pw.current = password;
         if (newPassword) dkey.current = await draftKey(newPassword);
@@ -256,7 +267,7 @@ export default function Game() {
   async function refresh(quiet = true) {
     if (!online || !data || dirty) return;
     try {
-      const remote = await fetchRemote(gh);
+      const remote = await storeFor().fetch();
       if (!remote || remote.sha === remoteSha.current) return;
       const fresh = await openAdmin(remote.file, pw.current);
       if (!fresh) return;
@@ -316,7 +327,7 @@ export default function Game() {
     if (!gh.token) { setOnline(false); setNotice("Token removido. As alterações ficam neste aparelho até publicar."); return; }
     setBusy(true);
     try {
-      const remote = await fetchRemote(gh);
+      const remote = await githubStore(gh).fetch();
       const fresh = remote ? await openAdmin(remote.file, pw.current) : null;
       if (remote && !fresh) throw new Error("A festa no GitHub usa outra palavra-passe.");
       remoteSha.current = remote?.sha ?? null; setOnline(true);
@@ -362,14 +373,14 @@ export default function Game() {
     {notice && <div role="status" className="toast"><Check size={18}/>{notice}</div>}
 
     {mode === "admin" ? <div className="dashboard">
-      <aside><div className="event-label">A TUA FESTA</div><h3>O Assassinato<br/>do Gabriel.</h3><div className={`tag ${online && !dirty ? "" : "warn"}`}><span/> {busy ? "A guardar…" : dirty ? "Por enviar" : online ? "Sincronizado" : data ? "Sem ligação GitHub" : "Preparação"}</div><nav>
+      <aside><div className="event-label">A TUA FESTA</div><h3>O Assassinato<br/>do Gabriel.</h3><div className={`tag ${online && !dirty ? "" : "warn"}`}><span/> {busy ? "A guardar…" : dirty ? "Por enviar" : online ? "Sincronizado" : data ? (server ? "Sem ligação" : "Sem ligação GitHub") : "Preparação"}</div><nav>
         <button className={tab === "players" ? "active" : ""} onClick={() => { setTab("players"); setSearch(""); }}><Users size={18}/>Jogadores<span>{data?.players.length || 0}</span></button>
         <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings size={18}/>Publicação</button>
       </nav><div className="aside-note"><ShieldCheck size={22}/><p>Os segredos ficam convosco.</p><small>Tudo é cifrado. Cada jogador só consegue abrir o seu papel com o seu código.</small></div><div className="aside-bottom">ORGANIZADO POR<br/><strong>André & Rosa</strong></div></aside>
       <main className="workspace">
         {!data ? <div className="setup-card"><div className="eyebrow">BASTIDORES DA NOITE</div><h1>O mistério começa<br/>convosco.</h1>
           {loading ? <p>A abrir os bastidores…</p> : <form onSubmit={unlock}>
-            {!party && !hasDraft ? <><p>Primeira vez? Escolham a palavra-passe da organização. Partilhem-na só entre os dois — sem ela, ninguém consegue abrir nem alterar a festa.</p>
+            {!party && !hasDraft ? <><p>{server ? "Primeira vez? Usem a palavra-passe definida no servidor (ADMIN_PASSWORD)." : "Primeira vez? Escolham a palavra-passe da organização. Partilhem-na só entre os dois — sem ela, ninguém consegue abrir nem alterar a festa."}</p>
               <label>Palavra-passe<input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}/></label>
               <label>Repetir palavra-passe<input type="password" autoComplete="new-password" required value={password2} onChange={(e) => setPassword2(e.target.value)}/></label>
               <button className="primary" disabled={busy}>{busy ? "A preparar…" : "Criar a festa"} <ArrowRight size={17}/></button></>
@@ -380,12 +391,13 @@ export default function Game() {
           </form>}
         </div> : <>
           <div className="page-heading"><div><div className="eyebrow">ÁREA DE ORGANIZAÇÃO / {tab === "players" ? "CONVIDADOS" : "PUBLICAÇÃO"}</div><h1>{tab === "players" ? "O elenco da noite." : "Dois cúmplices. Um plano."}</h1><p>{tab === "players" ? "Adicionem os amigos e escolham o papel de cada um." : "Liguem o GitHub, guardem uma cópia e publiquem."}</p></div>{tab === "players" && <button className="primary" onClick={() => editPlayer()}><Plus size={17}/>Adicionar jogador</button>}</div>
-          {dirty && <div className="publish-bar"><div><UploadCloud size={20}/><span><strong>{online ? "Alterações deste aparelho por enviar." : "Alterações por publicar."}</strong> {online ? "Os outros só as veem depois de enviar." : "Liga o GitHub em Publicação para que Guardar grave logo online."}</span></div><button className="primary" disabled={busy} onClick={publish}>{busy ? "A enviar…" : online ? "Enviar agora" : "Descarregar party.json"} <UploadCloud size={16}/></button></div>}
-          {!online && !dirty && <div className="publish-bar soft"><div><CloudOff size={20}/><span><strong>GitHub não ligado.</strong> Liga-o uma vez em Publicação: depois, Guardar grava tudo online e tu e a Rosa veem as mesmas coisas.</span></div><button className="secondary" onClick={() => setTab("settings")}>Ligar o GitHub</button></div>}
+          {dirty && <div className="publish-bar"><div><UploadCloud size={20}/><span><strong>{online ? "Alterações deste aparelho por enviar." : "Alterações por publicar."}</strong> {online ? "Os outros só as veem depois de enviar." : server ? "Volta a entrar nos bastidores para gravar no servidor." : "Liga o GitHub em Publicação para que Guardar grave logo online."}</span></div><button className="primary" disabled={busy} onClick={publish}>{busy ? "A enviar…" : online ? "Enviar agora" : "Descarregar party.json"} <UploadCloud size={16}/></button></div>}
+          {!online && !dirty && !server && <div className="publish-bar soft"><div><CloudOff size={20}/><span><strong>GitHub não ligado.</strong> Liga-o uma vez em Publicação: depois, Guardar grava tudo online e tu e a Rosa veem as mesmas coisas.</span></div><button className="secondary" onClick={() => setTab("settings")}>Ligar o GitHub</button></div>}
           {error && !modal && !confirm && <p role="alert" className="error">{error}</p>}
           <div className="stats"><div><span>CONVIDADOS</span><strong>{String(data.players.length).padStart(2, "0")}</strong><Users/></div><div><span>PAPÉIS ESCOLHIDOS</span><strong>{String(withRole).padStart(2, "0")}<small> / {data.players.length}</small></strong><VenetianMask/></div><div><span>DOSSIÊS ESCRITOS</span><strong>{String(withDossier).padStart(2, "0")}<small> / {data.players.length}</small></strong><BookOpen/></div></div>
 
           {tab === "settings" ? <section className="panel settings">
+            {server ? <><h2><Cloud size={20}/> Servidor</h2><p>A app corre no vosso servidor Docker. Cada Guardar grava logo e as alterações da outra pessoa aparecem sozinhas. Não é preciso token.</p></> : <>
             <h2><Github size={20}/> Ligação ao GitHub</h2>
             <p>{online ? <><Cloud size={14}/> Ligado. Cada Guardar grava logo no GitHub e as alterações da outra pessoa aparecem sozinhas.</> : "Cola o token uma vez neste aparelho (e uma vez no da Rosa). A partir daí, Guardar grava tudo online — sem ficheiros."}</p>
             <form onSubmit={saveGitHub}>
@@ -394,11 +406,14 @@ export default function Game() {
               <button className="primary" disabled={busy}>{busy ? "A ligar…" : "Ligar e guardar neste aparelho"} <Check size={16}/></button>
             </form>
             <div className="note"><LockKeyhole size={18}/><p>O token fica só neste navegador. Nunca é publicado.</p></div>
+            </>}
             <h2><QrCode size={20}/> QR code para a porta</h2>
             <p>Imprimam e ponham à entrada. Os convidados leem o QR, metem o código de 6 caracteres e descobrem o papel.</p>
             <div className="button-line"><button className="secondary" onClick={() => setModal("qr")}><QrCode size={15}/> Abrir QR para imprimir</button></div>
+            {server ? <><h2><KeyRound size={20}/> Palavra-passe da organização</h2><p>É a variável <code>ADMIN_PASSWORD</code> do ficheiro <code>.env</code> no servidor.</p></> : <>
             <h2><KeyRound size={20}/> Palavra-passe da organização</h2>
             <form onSubmit={changePassword}><label>Nova palavra-passe (a Rosa terá de usar a nova)<input type="password" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)}/></label><button className="secondary" disabled={busy}>Alterar palavra-passe</button></form>
+            </>}
             <h2><Download size={20}/> Cópia de segurança</h2>
             <p>Ficheiro <strong>não cifrado</strong> com tudo (segredos e códigos). Guardem-no num sítio privado — nunca no GitHub.</p>
             <div className="button-line"><button className="secondary" onClick={exportBackup}><Download size={15}/> Exportar cópia</button><label className="secondary file-button"><Upload size={15}/> Importar cópia<input type="file" accept="application/json" onChange={(e) => { void importBackup(e.target.files?.[0]); e.target.value = ""; }}/></label></div>

@@ -66,3 +66,52 @@ export async function writeRemote(t: GitHubTarget, file: PartyFile, sha: string 
   if (!res.ok) throw new Error(explain(res.status));
   return ((await res.json()) as { content: { sha: string } }).content.sha;
 }
+
+// ---------- Modo servidor (Docker) ----------
+// Mesma lógica (ler versão → aplicar → gravar com a versão), mas contra o próprio servidor.
+// A escrita é autorizada pela palavra-passe da organização; não é preciso token.
+export type Store = {
+  fetch(): Promise<Remote | null>;
+  write(file: PartyFile, sha: string | null, message: string): Promise<string>;
+};
+
+export async function detectServer(): Promise<boolean> {
+  try {
+    const res = await fetch(`./api/health?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) return false;
+    return ((await res.json()) as { server?: boolean }).server === true;
+  } catch { return false; }
+}
+
+export async function serverLogin(password: string): Promise<void> {
+  const res = await fetch("./api/login", { method: "POST", headers: { Authorization: `Bearer ${password}` } });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error || "Palavra-passe incorreta.");
+}
+
+export function serverStore(password: () => string): Store {
+  return {
+    async fetch() {
+      const res = await fetch(`./api/party?t=${Date.now()}`, { cache: "no-store" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("O servidor não respondeu. Tenta outra vez.");
+      const body = await res.json() as { sha: string; file: unknown };
+      if (!isPartyFile(body.file)) throw new Error("A festa guardada no servidor não é válida.");
+      return { file: body.file, sha: body.sha };
+    },
+    async write(file, sha) {
+      const res = await fetch("./api/party", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${password()}` },
+        body: JSON.stringify({ file, sha }),
+      });
+      if (res.status === 409) throw new ConflictError();
+      const body = await res.json().catch(() => ({})) as { sha?: string; error?: string };
+      if (!res.ok || !body.sha) throw new Error(body.error || `O servidor respondeu com o erro ${res.status}.`);
+      return body.sha;
+    },
+  };
+}
+
+export function githubStore(t: GitHubTarget): Store {
+  return { fetch: () => fetchRemote(t), write: (file, sha, message) => writeRemote(t, file, sha, message) };
+}

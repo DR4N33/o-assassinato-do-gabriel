@@ -1,0 +1,36 @@
+# O Assassinato do Gabriel — docker compose
+#
+#   cp .env.example .env      # e define ADMIN_PASSWORD
+#   docker compose up -d --build
+#   → http://<ip-do-servidor>:8080   (organização: http://<ip>:8080/?mode=admin)
+#
+# Acesso pela internet sem abrir portas (Rosa fora de casa, convidados com dados móveis):
+#   define TUNNEL_TOKEN no .env e arranca também o túnel Cloudflare:
+#   docker compose --profile tunnel up -d --build
+
+services:
+  app:
+    build: .
+    image: o-assassinato-do-gabriel:latest
+    container_name: assassinato-gabriel
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Define ADMIN_PASSWORD no ficheiro .env}
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - festa-data:/data
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: assassinato-gabriel-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - app
+    profiles: ["tunnel"]
+
+volumes:
+  festa-data:

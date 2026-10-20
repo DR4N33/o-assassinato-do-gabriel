@@ -1,6 +1,9 @@
 # O Assassinato do Gabriel
 
-Aplicação em português para uma festa Murder Mystery de Halloween. Site 100 % estático, alojado no **GitHub Pages**, sem servidor nem base de dados.
+Aplicação em português para uma festa Murder Mystery de Halloween. Funciona de duas maneiras:
+
+- **Docker** (recomendado para gerir): servidor próprio, tudo instantâneo, sem token — ver [Docker](#docker).
+- **GitHub Pages**: site estático gratuito, gravação via token GitHub.
 
 ## Como funciona
 
@@ -24,6 +27,28 @@ Aplicação em português para uma festa Murder Mystery de Halloween. Site 100 %
 5. **No dia**: em *Publicação → QR code para a porta*, imprimir o QR. Os convidados leem o QR, metem o código de 6 caracteres e descobrem o papel. (Também se pode copiar o convite pessoal de cada jogador — ícone ao lado do nome.)
 
 Exportar uma cópia de segurança em *Publicação* (ficheiro **não cifrado**: guardar em privado, nunca no GitHub).
+
+## Docker
+
+Requisitos: uma máquina sempre ligada com Docker (servidor em casa, NAS, Raspberry Pi, VPS).
+
+```bash
+git clone https://github.com/DR4N33/o-assassinato-do-gabriel.git
+cd o-assassinato-do-gabriel
+cp .env.example .env          # definir ADMIN_PASSWORD (frase longa, partilhada só com a Rosa)
+docker compose up -d --build
+```
+
+- Jogo: `http://<ip-do-servidor>:8080` · Organização: `http://<ip-do-servidor>:8080/?mode=admin` (entrar com `ADMIN_PASSWORD`).
+- Dados no volume `festa-data` (`/data/party.json`, cifrado). Backup: `docker compose cp app:/data/party.json ./party-backup.json`.
+- Atualizar depois de mudanças no código: `git pull && docker compose up -d --build`.
+
+### Acesso pela internet (Cloudflare Tunnel, sem abrir portas)
+
+1. Cloudflare → **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo *Cloudflared*) → copiar o token.
+2. No túnel, **Public hostname**: ex. `gabriel.teudominio.com` → *Service* `HTTP` → `app:8080`.
+3. Colar o token em `TUNNEL_TOKEN` no `.env` e arrancar com o túnel: `docker compose --profile tunnel up -d --build`.
+4. O QR code (em *Publicação*) usa automaticamente o endereço por onde abriram a organização — abram-na pelo endereço público antes de imprimir.
 
 ## Desenvolvimento
 
