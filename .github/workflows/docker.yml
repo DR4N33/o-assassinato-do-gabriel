@@ -15,14 +15,14 @@ jobs:
         run: docker build -t assassinato-test .
       - name: Arrancar e testar
         run: |
-          check() { if eval "$2"; then echo "::notice::OK - $1"; else echo "::error::FALHOU - $1"; docker logs t 2>&1 | tail -20 | while read -r l; do echo "::error::log: $l"; done; exit 1; fi; }
-          out=$(docker run -d --name t -p 127.0.0.1:18080:8080 -e ADMIN_PASSWORD=palavra-passe-teste assassinato-test 2>&1) || { echo "::error::docker run: $out"; exit 1; }
+          check() { if eval "$2"; then echo "::notice::OK - $1"; else echo "::error::FALHOU - $1"; docker logs festa-test 2>&1 | tail -20 | while read -r l; do echo "::error::log: $l"; done; exit 1; fi; }
+          out=$(docker run -d --name festa-test -p 127.0.0.1:18080:8080 -e ADMIN_PASSWORD=palavra-passe-teste assassinato-test 2>&1) || { echo "::error::docker run: $out"; exit 1; }
           for i in $(seq 1 20); do curl -fs http://127.0.0.1:18080/api/health > /dev/null && break; sleep 1; done
           check "health" 'curl -fs http://127.0.0.1:18080/api/health > /dev/null'
           check "página" 'curl -fs http://127.0.0.1:18080/ | grep "O Assassinato do Gabriel" > /dev/null'
           check "sem festa = 404" 'test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/party.json)" = 404'
           check "palavra-passe errada = 401" 'test "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer errada-errada" http://127.0.0.1:18080/api/login)" = 401'
           check "palavra-passe certa = 200" 'test "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer palavra-passe-teste" http://127.0.0.1:18080/api/login)" = 200'
-          check "volume /data gravável" 'docker exec t sh -c "touch /data/.w && rm /data/.w"'
+          check "volume /data gravável" 'docker exec festa-test sh -c "touch /data/.w && rm /data/.w"'
       - if: always()
-        run: docker logs t || true
+        run: docker logs festa-test || true
