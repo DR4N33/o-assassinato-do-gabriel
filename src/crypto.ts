@@ -11,7 +11,9 @@ export type Dossier = { occupation?: string; story?: string; secrets?: string; a
 export type Player = Dossier & { id: string; name: string; code: string; role?: Role | null; characterId?: string | null };
 // Formato antigo (separador Personagens), mantido só para ler festas antigas
 export type Character = Dossier & { id: string; name: string; role: Role };
-export type PartyData = { players: Player[]; characters?: Character[]; updatedAt: number };
+// gh: ligação GitHub partilhada (token incluído) — só existe no bloco da organização, cifrado com a palavra-passe
+export type SharedGitHub = { owner: string; repo: string; branch: string; token: string };
+export type PartyData = { players: Player[]; characters?: Character[]; gh?: SharedGitHub; updatedAt: number };
 export type Box = { iv: string; ct: string };
 export type PartyFile = { v: 1; iter: number; salt: string; updatedAt: number; admin: Box; entries: Box[] };
 export type PlayerView = Dossier & { name: string; role: Role | null; updatedAt: number };

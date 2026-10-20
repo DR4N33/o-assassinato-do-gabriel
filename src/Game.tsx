@@ -33,8 +33,8 @@ const sectionIcons = { story: BookOpen, secrets: LockKeyhole, alibi: Clock3, inf
 const hasDossier = (p: Partial<Record<string, unknown>>) => sections.some((s) => String(p[s.key] || "").trim());
 // Festas criadas com o antigo separador "Personagens": os textos passam para o próprio jogador
 function migrate(d: PartyData): PartyData {
-  if (!d.characters?.length) return { players: d.players, updatedAt: d.updatedAt };
-  return { updatedAt: d.updatedAt, players: d.players.map((p) => { const r = resolvePlayer(p, d.characters); return { id: p.id, code: p.code, ...r }; }) };
+  if (!d.characters?.length) return { players: d.players, gh: d.gh, updatedAt: d.updatedAt };
+  return { updatedAt: d.updatedAt, gh: d.gh, players: d.players.map((p) => { const r = resolvePlayer(p, d.characters); return { id: p.id, code: p.code, ...r }; }) };
 }
 const KEY_CODE = "mystery_code", KEY_DRAFT = "mystery_draft", KEY_GITHUB = "mystery_github";
 
@@ -148,6 +148,11 @@ export default function Game() {
     window.addEventListener("focus", tick);
     return () => { clearInterval(t); window.removeEventListener("focus", tick); };
   }, [online, data, modal, confirm, busy, dirty]);
+  // Guarda o token dentro da festa (cifrado) para que os outros aparelhos se liguem só com a palavra-passe
+  useEffect(() => {
+    if (!online || server || !data || busy || dirty || !gh.token || data.gh?.token === gh.token) return;
+    void commit((d) => d, "Partilhar a ligação GitHub com os outros aparelhos");
+  }, [online, server, data, busy, dirty, gh.token]);
   // Accessibilité des fenêtres modales (focus piégé, Échap)
   useEffect(() => {
     if (!modal && !confirm) return;
@@ -221,8 +226,18 @@ export default function Game() {
           source = remote?.file ?? null; remoteSha.current = remote?.sha ?? null; connected = true; setParty(source);
         } catch (err) { setNotice(`Sem ligação ao GitHub: ${(err as Error).message}`); }
       }
-      const published = source ? await openAdmin(source, password) : null;
+      let published = source ? await openAdmin(source, password) : null;
       if (source && !published && connected) throw new Error("Palavra-passe incorreta.");
+      // Ligação automática: o token GitHub vem guardado (cifrado) dentro da festa
+      if (!connected && !server && published?.gh?.token) {
+        const shared = published.gh;
+        try {
+          const remote = await githubStore(shared).fetch();
+          const fresh = remote ? await openAdmin(remote.file, password) : null;
+          if (remote && fresh) { source = remote.file; published = fresh; remoteSha.current = remote.sha; setParty(source); }
+          connected = true; setGh(shared); store.set(KEY_GITHUB, JSON.stringify(shared));
+        } catch { /* sem rede: continua com a versão do site */ }
+      }
       let local: PartyData | null = null;
       const rawDraft = store.get(KEY_DRAFT);
       const savedDraft: Draft | null = rawDraft ? JSON.parse(rawDraft) : null;
@@ -266,6 +281,7 @@ export default function Game() {
         const base = remote ? await openAdmin(remote.file, pw.current) : { players: [], updatedAt: 0 };
         if (!base) throw new Error("A palavra-passe da festa foi alterada noutro aparelho. Fecha os bastidores e volta a entrar.");
         const next: PartyData = { ...op(migrate(base)), updatedAt: Date.now() };
+        if (!server && gh.token) next.gh = { owner: gh.owner, repo: gh.repo, branch: gh.branch, token: gh.token };
         const password = newPassword ?? pw.current;
         const file = await buildPartyFile(next, password, remote?.file.iter ?? ITERATIONS, newPassword ? undefined : remote?.file.salt);
         try {
@@ -373,7 +389,8 @@ export default function Game() {
   }
   function exportBackup() {
     if (!data) return;
-    download(`festa-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2));
+    const { gh: _token, ...rest } = data;
+    download(`festa-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(rest, null, 2));
   }
   async function importBackup(file?: File) {
     if (!file) return;
@@ -419,6 +436,7 @@ export default function Game() {
           </form>}
         </div> : <>
           <div className="page-heading"><div><div className="eyebrow">ÁREA DE ORGANIZAÇÃO / {tab === "players" ? "CONVIDADOS" : "PUBLICAÇÃO"}</div><h1>{tab === "players" ? "O elenco da noite." : "Dois cúmplices. Um plano."}</h1><p>{tab === "players" ? "Adicionem os amigos e escolham o papel de cada um." : "Liguem o GitHub, guardem uma cópia e publiquem."}</p></div>{tab === "players" && <button className="primary" onClick={() => editPlayer()}><Plus size={17}/>Adicionar jogador</button>}</div>
+          <div className={`sync-pill ${online && !dirty ? "ok" : "warn"}`}><span/>{busy ? "A guardar…" : dirty ? "Por enviar" : online ? "Sincronizado" : server ? "Sem ligação" : "Sem ligação GitHub"}</div>
           {dirty && <div className="publish-bar"><div><UploadCloud size={20}/><span><strong>{online ? "Alterações deste aparelho por enviar." : "Alterações por publicar."}</strong> {online ? "Os outros só as veem depois de enviar." : server ? "Volta a entrar nos bastidores para gravar no servidor." : "Liga o GitHub em Publicação para que Guardar grave logo online."}</span></div><button className="primary" disabled={busy} onClick={publish}>{busy ? "A enviar…" : online ? "Enviar agora" : "Descarregar party.json"} <UploadCloud size={16}/></button></div>}
           {!online && !dirty && !server && <div className="publish-bar soft"><div><CloudOff size={20}/><span><strong>GitHub não ligado.</strong> Liga-o uma vez em Publicação: depois, Guardar grava tudo online e tu e a Rosa veem as mesmas coisas.</span></div><button className="secondary" onClick={() => setTab("settings")}>Ligar o GitHub</button></div>}
           {error && !modal && !confirm && <p role="alert" className="error">{error}</p>}
@@ -427,13 +445,13 @@ export default function Game() {
           {tab === "settings" ? <section className="panel settings">
             {server ? <><h2><Cloud size={20}/> Servidor</h2><p>A app corre no vosso servidor Docker. Cada Guardar grava logo e as alterações da outra pessoa aparecem sozinhas. Não é preciso token.</p></> : <>
             <h2><Github size={20}/> Ligação ao GitHub</h2>
-            <p>{online ? <><Cloud size={14}/> Ligado. Cada Guardar grava logo no GitHub e as alterações da outra pessoa aparecem sozinhas.</> : "Cola o token uma vez neste aparelho (e uma vez no da Rosa). A partir daí, Guardar grava tudo online — sem ficheiros."}</p>
+            <p>{online ? <><Cloud size={14}/> Ligado. Cada Guardar grava logo no GitHub e as alterações da outra pessoa aparecem sozinhas. Os outros aparelhos ligam-se sozinhos com a palavra-passe.</> : "Cola o token uma vez, num só aparelho. Fica guardado na festa (cifrado com a palavra-passe) e os outros aparelhos ligam-se sozinhos ao entrar."}</p>
             <form onSubmit={saveGitHub}>
               <div className="form-row"><label>Dono<input value={gh.owner} onChange={(e) => setGh({ ...gh, owner: e.target.value.trim() })}/></label><label>Repositório<input value={gh.repo} onChange={(e) => setGh({ ...gh, repo: e.target.value.trim() })}/></label></div>
               <div className="form-row"><label>Ramo<input value={gh.branch} onChange={(e) => setGh({ ...gh, branch: e.target.value.trim() })}/></label><label>Token (fine-grained, Contents: read & write)<input type="password" autoComplete="off" value={gh.token} onChange={(e) => setGh({ ...gh, token: e.target.value.trim() })} placeholder="github_pat_…"/></label></div>
               <button className="primary" disabled={busy}>{busy ? "A ligar…" : "Ligar e guardar neste aparelho"} <Check size={16}/></button>
             </form>
-            <div className="note"><LockKeyhole size={18}/><p>O token fica só neste navegador. Nunca é publicado.</p></div>
+            <div className="note"><LockKeyhole size={18}/><p>O token fica guardado na festa, cifrado com a palavra-passe da organização. Nunca é visível para os convidados.</p></div>
             </>}
             <h2><QrCode size={20}/> QR code para a porta</h2>
             <p>Imprimam e ponham à entrada. Os convidados leem o QR, metem o código de 6 caracteres e descobrem o papel.</p>

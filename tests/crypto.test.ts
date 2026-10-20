@@ -46,6 +46,15 @@ test("organização com a palavra-passe certa", async () => {
   assert.equal(await openAdmin(file, "K7M2QX"), null);
 });
 
+test("o token da organização nunca aparece na ficha de um convidado", async () => {
+  const withToken: PartyData = { ...data, gh: { owner: "o", repo: "r", branch: "main", token: "github_pat_SEGREDO" } };
+  const file = await buildPartyFile(withToken, "palavra-passe-secreta", ITER);
+  assert.ok(!JSON.stringify(file).includes("github_pat_SEGREDO"));
+  const diogo = await openPlayer(file, "K7M2QX");
+  assert.ok(!JSON.stringify(diogo).includes("github_pat"));
+  assert.equal((await openAdmin(file, "palavra-passe-secreta"))?.gh?.token, "github_pat_SEGREDO");
+});
+
 test("nada legível no ficheiro publicado", async () => {
   const text = JSON.stringify(await buildPartyFile(data, "palavra-passe-secreta", ITER));
   for (const secret of ["Diogo", "Rui", "assassino", "cumplice", "K7M2QX", "matou", "traído"]) assert.ok(!text.includes(secret), secret);

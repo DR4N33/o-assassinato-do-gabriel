@@ -112,3 +112,5 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 .brand-logo .logo-text{font-size:24px}
 .brand-logo .emblem{width:38px;height:38px}
 @media(max-width:760px){.brand-logo{gap:9px}.brand-logo .logo-text{font-size:clamp(17px,5.4vw,22px)}.brand-logo .emblem{width:30px;height:30px}.edition{display:none}}
+.sync-pill{display:none}
+@media(max-width:760px){.sync-pill{display:inline-flex;align-items:center;gap:8px;margin:0 0 16px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--muted)}.sync-pill span{width:7px;height:7px;border-radius:50%;background:#e0a35a}.sync-pill.ok span{background:#7fc28a}}
