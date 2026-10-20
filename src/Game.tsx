@@ -54,6 +54,9 @@ function download(name: string, text: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+function RoleBanner({ role }: { role: Role }) {
+  return <div className={`role-banner ${darkRoles.includes(role) ? "red" : ""}`}><span>O TEU PAPEL</span><strong>{roles[role] ?? role}</strong><p>{roleMessages[role] ?? ""}</p></div>;
+}
 function Brand() { return <a href="./" className="brand"><Fingerprint size={32}/><span>O ASSASSINATO<small>DO GABRIEL · HALLOWEEN</small></span></a>; }
 
 export default function Game() {
@@ -189,8 +192,8 @@ export default function Game() {
 
   function editPlayer(p?: Player) {
     setError("");
-    setDraft(p ? { id: p.id, name: p.name, code: formatCode(p.code), characterId: p.characterId || "" }
-      : { id: "", name: "", code: formatCode(generateCode(data?.players.map((x) => x.code))), characterId: "" });
+    setDraft(p ? { id: p.id, name: p.name, code: formatCode(p.code), characterId: p.characterId || "", role: p.role || "" }
+      : { id: "", name: "", code: formatCode(generateCode(data?.players.map((x) => x.code))), characterId: "", role: "" });
     setModal("player");
   }
   function editCharacter(c?: Character) { setError(""); setDraft(c ? { ...emptyCharacter, ...c } : { ...emptyCharacter }); setModal("character"); }
@@ -204,7 +207,7 @@ export default function Game() {
         if (!name) throw new Error("Indica o nome do jogador.");
         if (c.length < 4) throw new Error("O código deve ter pelo menos 4 letras ou números.");
         if (data.players.some((p) => p.code === c && p.id !== draft.id)) throw new Error("Este código já pertence a outro jogador.");
-        const p: Player = { id: draft.id || uid(), name, code: c, characterId: draft.characterId || null };
+        const p: Player = { id: draft.id || uid(), name, code: c, characterId: draft.characterId || null, role: (draft.role || null) as Role | null };
         change({ ...data, players: draft.id ? data.players.map((x) => x.id === p.id ? p : x) : [...data.players, p] });
       } else {
         const name = draft.name.trim();
@@ -273,6 +276,7 @@ export default function Game() {
   }
   const invite = (p: Player) => `O Assassinato do Gabriel espera por ti, ${p.name}. Abre ${siteUrl()}?codigo=${p.code} ou entra em ${siteUrl()} com o teu código: ${formatCode(p.code)}. Guarda os teus segredos!`;
 
+  const myRole = view ? (view.role || view.character?.role || null) : null;
   const assigned = data?.players.filter((p) => p.characterId).length || 0;
   const q = search.toLowerCase();
   const visiblePlayers = data?.players.filter((p) => `${p.name} ${p.code}`.toLowerCase().includes(q)) || [];
@@ -323,11 +327,12 @@ export default function Game() {
             <button className="quiet" onClick={lock}><LogOut size={16}/> Fechar os bastidores</button>
           </section> :
           <section className="panel"><div className="panel-toolbar"><h2>{tab === "players" ? "Lista de convidados" : "Dossiês de personagens"}<span>{tab === "players" ? data.players.length : data.characters.length}</span></h2><div className="search"><Search size={16}/><input aria-label="Pesquisar" placeholder={tab === "players" ? "Procurar jogador…" : "Procurar personagem…"} value={search} onChange={(e) => setSearch(e.target.value)}/></div></div>
-            {tab === "players" ? <div className="table-wrap"><table><thead><tr><th>JOGADOR</th><th>PERSONAGEM</th><th>ESTADO</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{visiblePlayers.map((p) => {
+            {tab === "players" ? <div className="table-wrap"><table><thead><tr><th>JOGADOR</th><th>PAPEL · PERSONAGEM</th><th>ESTADO</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{visiblePlayers.map((p) => {
               const c = data.characters.find((c) => c.id === p.characterId);
+              const role = p.role || c?.role;
               return <tr key={p.id}><td><div className="person"><div className="avatar">{p.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}</div><div><strong>{p.name}</strong><small className="code-chip">{formatCode(p.code)}</small></div></div></td>
-                <td>{c ? <div><strong>{c.name}</strong><small>{roles[c.role]}</small></div> : <button className="text-button" onClick={() => editPlayer(p)}><Plus size={14}/> Atribuir personagem</button>}</td>
-                <td><span className={`status ${c ? "ready" : "pending"}`}>{c ? "Pronto para jogar" : "Por preparar"}</span></td>
+                <td>{role && <span className={`status ${darkRoles.includes(role) ? "killer" : "ready"}`}>{roles[role]}</span>}{c ? <div><strong>{c.name}</strong><small>{c.occupation}</small></div> : <button className="text-button" onClick={() => editPlayer(p)}><Plus size={14}/> {role ? "Atribuir dossiê" : "Escolher papel"}</button>}</td>
+                <td><span className={`status ${c || role ? "ready" : "pending"}`}>{c ? "Pronto para jogar" : role ? "Papel escolhido" : "Por preparar"}</span></td>
                 <td><div className="row-actions"><button aria-label={`Copiar convite de ${p.name}`} title="Copiar convite com o código" onClick={() => copy(invite(p), `Convite de ${p.name} copiado.`)}><Copy size={16}/></button><button aria-label={`Editar ${p.name}`} onClick={() => editPlayer(p)}><Pencil size={16}/></button><button aria-label={`Eliminar ${p.name}`} onClick={() => setConfirm({ kind: "player", id: p.id, name: p.name })}><Trash2 size={16}/></button></div></td></tr>;
             })}</tbody></table>{!data.players.length ? <div className="empty"><Users size={36}/><h3>A mesa ainda está vazia.</h3><p>Comecem pelos nomes. Os segredos vêm a seguir.</p><button className="secondary" onClick={() => editPlayer()}>Adicionar o primeiro jogador <Plus size={16}/></button></div> : !visiblePlayers.length ? <div className="empty"><p>Nenhum jogador encontrado.</p></div> : null}</div> :
             <div className="character-grid">{visibleCharacters.map((c, i) => <article className="character-card" key={c.id}><div className="card-top"><span>DOSSIÊ {String(i + 1).padStart(2, "0")}</span><VenetianMask size={22}/></div><h3>{c.name}</h3><p>{c.occupation || "Ocupação por definir"}</p><span className={`status ${darkRoles.includes(c.role) ? "killer" : "ready"}`}>{roles[c.role]}</span><div className="card-bottom"><small>{data.players.find((p) => p.characterId === c.id)?.name || "Sem jogador atribuído"}</small><div className="row-actions"><button aria-label={`Editar ${c.name}`} onClick={() => editCharacter(c)}><Pencil size={16}/></button><button aria-label={`Eliminar ${c.name}`} onClick={() => setConfirm({ kind: "character", id: c.id, name: c.name })}><Trash2 size={16}/></button></div></div></article>)}{!data.characters.length ? <div className="empty"><VenetianMask size={38}/><h3>Quem estará entre nós?</h3><p>Criem as personagens, dos álibis aos segredos mais bem guardados.</p><button className="secondary" onClick={() => editCharacter()}>Criar a primeira personagem <Plus size={16}/></button></div> : !visibleCharacters.length ? <div className="empty"><p>Nenhuma personagem encontrada.</p></div> : null}</div>}
@@ -341,9 +346,9 @@ export default function Game() {
     <main className={`player-main ${view ? "has-player" : ""}`}>
       {loading ? <div className="loading"><Fingerprint size={40}/><p>A abrir o teu dossiê…</p></div> : view ? <div className="dossier"><div className="dossier-top"><span className="eyebrow">DOSSIÊ CONFIDENCIAL · {view.name}</span><button className="quiet" onClick={logout}><LogOut size={16}/> Sair</button></div>
         {view.character ? <><div className="dossier-title"><div><div className="eyebrow">ESTA NOITE, TU ÉS</div><h1>{hidden ? "••••••••" : view.character.name}</h1><p>{hidden ? "Dossiê oculto" : view.character.occupation}</p></div><VenetianMask size={68}/></div><div className="privacy-bar"><span><LockKeyhole size={15}/> Apenas para os teus olhos.</span><button className="quiet" onClick={() => setHidden(!hidden)}><Eye size={16}/>{hidden ? "Mostrar dossiê" : "Ocultar dossiê"}</button></div>
-          {!hidden && <><div className={`role-banner ${darkRoles.includes(view.character.role) ? "red" : ""}`}><span>O TEU PAPEL</span><strong>{roles[view.character.role] ?? view.character.role}</strong><p>{roleMessages[view.character.role] ?? ""}</p></div><div className="dossier-sections">{sections.filter((s) => (view.character![s.key] || "").trim()).map((s) => { const Icon = { story: BookOpen, secrets: LockKeyhole, alibi: Clock3, information: FileQuestion, objective: KeyRound }[s.key]; return <section key={s.key}><Icon size={21}/><h2>{s.title}</h2><p className="pre">{view.character![s.key]}</p></section>; })}</div></>}
+          {!hidden && <>{myRole && <RoleBanner role={myRole}/>}<div className="dossier-sections">{sections.filter((s) => (view.character![s.key] || "").trim()).map((s) => { const Icon = { story: BookOpen, secrets: LockKeyhole, alibi: Clock3, information: FileQuestion, objective: KeyRound }[s.key]; return <section key={s.key}><Icon size={21}/><h2>{s.title}</h2><p className="pre">{view.character![s.key]}</p></section>; })}</div></>}
           <p className="closing">Confia no teu instinto. Desconfia de todos.</p></>
-        : <div className="empty waiting"><VenetianMask size={48}/><h1>O teu segredo<br/>está a caminho.</h1><p>Olá, {view.name}. A organização ainda está a preparar a tua personagem.</p></div>}
+        : <>{myRole && <RoleBanner role={myRole}/>}<div className="empty waiting"><VenetianMask size={48}/><h1>{myRole ? <>O teu dossiê<br/>está a caminho.</> : <>O teu segredo<br/>está a caminho.</>}</h1><p>Olá, {view.name}. A organização ainda está a preparar a tua personagem.</p></div></>}
         <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> Verificar atualizações</button>{error && <p className="error" role="alert">{error}</p>}</div> :
       <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> UMA FESTA. UM CRIME. UM DE NÓS.</div><h1>O Assassinato<br/>do <em>Gabriel.</em></h1><p>Uma noite de Halloween. Um crime por resolver.<br/>O assassino está entre nós.</p><div className="intro-foot"><Fingerprint size={27}/><span>A verdade tem muitas versões.<br/><strong>Qual vai ser a tua?</strong></span></div></section>
         <section className="login-card"><div className="file-mark">ARQUIVO PRIVADO <span>01 / ENTRADA</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>Entra no mistério.</h2><p>Introduz o código secreto que a organização te enviou para descobrires quem és esta noite.</p>
@@ -356,9 +361,10 @@ export default function Game() {
       <form onSubmit={save}><label>{modal === "player" ? "Nome do jogador" : "Nome da personagem"}<input autoFocus required maxLength={100} value={draft.name} onChange={(e) => field("name", e.target.value)} placeholder={modal === "player" ? "Como se chama o convidado?" : "Ex.: Helena Montenegro"}/></label>
         {modal === "player" ? <>
           <label>Código secreto<div className="code-row"><input className="code-input" required maxLength={20} value={draft.code} onChange={(e) => field("code", e.target.value.toUpperCase())}/><button type="button" className="secondary" title="Gerar outro código" onClick={() => field("code", formatCode(generateCode(data.players.map((p) => p.code))))}><Dices size={16}/></button></div><small>Gerado automaticamente. É com ele que o jogador entra.</small></label>
-          <label>Personagem<select value={draft.characterId || ""} onChange={(e) => field("characterId", e.target.value)}><option value="">Atribuir mais tarde</option>{data.characters.filter((c) => c.id === draft.characterId || !data.players.some((p) => p.characterId === c.id)).map((c) => <option key={c.id} value={c.id}>{c.name} · {roles[c.role]}</option>)}</select><small>Cada personagem só pode ser atribuída a um jogador.</small></label>
+          <label>Papel<select value={draft.role || ""} onChange={(e) => field("role", e.target.value)}><option value="">Escolher mais tarde</option>{Object.entries(roles).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select><small>É o que o jogador vê em "O teu papel" quando entra com o código.</small></label>
+          <label>Personagem (dossiê)<select value={draft.characterId || ""} onChange={(e) => field("characterId", e.target.value)}><option value="">Atribuir mais tarde</option>{data.characters.filter((c) => c.id === draft.characterId || !data.players.some((p) => p.characterId === c.id)).map((c) => <option key={c.id} value={c.id}>{c.name} · {roles[c.role]}</option>)}</select><small>{data.characters.length ? "Cada personagem só pode ser atribuída a um jogador." : "Ainda não há personagens. Criem-nas no separador Personagens (história, segredo, álibi…) e depois atribuam-nas aqui."}</small></label>
         </> : <>
-          <div className="form-row"><label>Ocupação<input maxLength={100} value={draft.occupation} onChange={(e) => field("occupation", e.target.value)} placeholder="Ex.: A herdeira"/></label><label>Papel<select value={draft.role} onChange={(e) => field("role", e.target.value)}>{Object.entries(roles).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label></div>
+          <div className="form-row"><label>Ocupação<input maxLength={100} value={draft.occupation} onChange={(e) => field("occupation", e.target.value)} placeholder="Ex.: A herdeira"/></label><label>Papel<select value={draft.role} onChange={(e) => field("role", e.target.value)}>{Object.entries(roles).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select><small>Pode ser mudado por jogador.</small></label></div>
           {sections.map(({ key: k, label }) => <label key={k}>{label}<textarea maxLength={6000} rows={k === "story" || k === "secrets" ? 5 : 3} value={draft[k]} onChange={(e) => field(k, e.target.value)} placeholder="Só o jogador que receber esta personagem verá esta informação."/></label>)}
         </>}
         {error && <p role="alert" className="error">{error}</p>}<div className="modal-actions"><button type="button" className="quiet" onClick={() => setModal(null)}>Cancelar</button><button className="primary">Guardar<Check size={16}/></button></div></form></section></div>}

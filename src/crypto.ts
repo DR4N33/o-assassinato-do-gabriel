@@ -9,11 +9,12 @@ export type Character = {
   id: string; name: string; occupation: string; role: Role;
   story: string; secrets: string; alibi: string; information: string; objective?: string;
 };
-export type Player = { id: string; name: string; code: string; characterId: string | null };
+// role : papel escolhido pela organização para este jogador (tem prioridade sobre o papel da personagem)
+export type Player = { id: string; name: string; code: string; characterId: string | null; role?: Role | null };
 export type PartyData = { characters: Character[]; players: Player[]; updatedAt: number };
 export type Box = { iv: string; ct: string };
 export type PartyFile = { v: 1; iter: number; salt: string; updatedAt: number; admin: Box; entries: Box[] };
-export type PlayerView = { name: string; character: Character | null; updatedAt: number };
+export type PlayerView = { name: string; character: Character | null; role?: Role | null; updatedAt: number };
 
 export const ITERATIONS = 310_000;
 // Sans I, L, O, 0, 1 : pas de confusion à la lecture.
@@ -96,7 +97,7 @@ export async function buildPartyFile(data: PartyData, password: string, iter = I
   const admin = await seal(await deriveKey(password, salt, iter, "admin"), full);
   const entries = await Promise.all(data.players.map(async (p) => {
     const character = data.characters.find((c) => c.id === p.characterId) ?? null;
-    const view: PlayerView = { name: p.name, character, updatedAt };
+    const view: PlayerView = { name: p.name, character, role: p.role || character?.role || null, updatedAt };
     return seal(await deriveKey(normalizeCode(p.code), salt, iter, "player"), view);
   }));
   return { v: 1, iter, salt: toB64(salt), updatedAt, admin, entries: shuffle(entries) };
