@@ -11,11 +11,18 @@ import {
 import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
 import { Emblem, Logo, LogoText } from "./Logo";
 
-const roles: Record<Role, string> = { assassino: "Assassino", cumplice: "Cúmplice", testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima" };
+const roles: Record<Role, string> = {
+  assassino: "Assassino", cumplice: "Cúmplice", amante: "Amante", agressor: "Agressor", amiga: "Amiga", amigo: "Amigo",
+  testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima",
+};
 // Mensagem mostrada ao jogador por baixo do papel
 const roleMessages: Record<Role, string> = {
   assassino: "Foste tu. Guarda este segredo e cabe-te escapar às suspeitas até ao fim da noite.",
   cumplice: "Sabes a verdade. Protege o assassino sem te denunciares.",
+  amante: "Há uma paixão que ninguém pode descobrir. Protege o teu segredo… ou usa-o a teu favor.",
+  agressor: "Houve violência esta noite, e tu estiveste no meio dela. Isso não faz de ti o assassino… pois não?",
+  amiga: "Eras próxima do Gabriel. Ajuda a descobrir a verdade, mas lembra-te: também tens algo a esconder.",
+  amigo: "Eras próximo do Gabriel. Ajuda a descobrir a verdade, mas lembra-te: também tens algo a esconder.",
   testemunha: "Viste algo importante. Decide bem a quem o contas, e quando.",
   suspeito: "Estás inocente, mas toda a gente tem algo a esconder. Descobre quem está a mentir.",
   vitima: "O teu papel é especial. Segue as instruções do teu dossiê.",

@@ -4,7 +4,7 @@
 //  - blocs "entries": une fiche par joueur (nom + sa personagem), clé = son code personnel
 // Sans le bon code, impossible de lire une fiche ni de savoir à qui elle appartient.
 
-export type Role = "assassino" | "cumplice" | "testemunha" | "suspeito" | "vitima";
+export type Role = "assassino" | "cumplice" | "amante" | "agressor" | "amiga" | "amigo" | "testemunha" | "suspeito" | "vitima";
 // Textos do dossiê, todos opcionais
 export type Dossier = { occupation?: string; story?: string; secrets?: string; alibi?: string; information?: string; objective?: string };
 // Cada jogador é a sua própria personagem: nome, código, papel e dossiê.
