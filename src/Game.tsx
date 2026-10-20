@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Fingerprint, ArrowRight, Plus, Users, VenetianMask, Settings, Search, X, LockKeyhole, LogOut, Eye, Pencil,
   Trash2, Check, Share2, RefreshCw, ShieldCheck, BookOpen, KeyRound, Clock3, FileQuestion, Copy, UploadCloud,
-  Download, Upload, Github, Dices, ChevronDown,
+  Download, Upload, Github, Dices, ChevronDown, QrCode, Printer, CloudOff, Cloud,
 } from "lucide-react";
 import {
   buildPartyFile, draftKey, generateCode, isPartyFile, normalizeCode, openAdmin, openDraft, openPlayer, resolvePlayer, sealDraft,
-  CODE_LENGTH, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
+  CODE_LENGTH, ITERATIONS, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
 } from "./crypto";
-import { guessTarget, publishToGitHub, type GitHubTarget } from "./github";
+import { ConflictError, fetchRemote, guessTarget, writeRemote, type GitHubTarget } from "./github";
 
 const roles: Record<Role, string> = { assassino: "Assassino", cumplice: "Cúmplice", testemunha: "Testemunha", suspeito: "Suspeito", vitima: "Vítima" };
 // Mensagem mostrada ao jogador por baixo do papel
@@ -76,9 +76,11 @@ export default function Game() {
   const [password, setPassword] = useState(""), [password2, setPassword2] = useState(""), [hasDraft, setHasDraft] = useState(false);
   const pw = useRef(""), dkey = useRef<Awaited<ReturnType<typeof draftKey>> | null>(null);
   const [gh, setGh] = useState<GitHubTarget>(() => ({ ...guessTarget(), token: "" }));
-  const [search, setSearch] = useState(""), [modal, setModal] = useState<"player" | null>(null), [showDossier, setShowDossier] = useState(false);
+  const [search, setSearch] = useState(""), [modal, setModal] = useState<"player" | "qr" | null>(null), [showDossier, setShowDossier] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({}), [confirm, setConfirm] = useState<{ id: string; name: string } | null>(null);
   const [newPw, setNewPw] = useState("");
+  // online = token GitHub configurado: cada Guardar grava logo no repositório
+  const [online, setOnline] = useState(false), remoteSha = useRef<string | null>(null);
 
   // linkCode : code reçu via le lien d'invitation (?codigo=…) ; sinon on reprend celui mémorisé sur l'appareil.
   async function loadPlayer(linkCode?: string) {
@@ -98,7 +100,13 @@ export default function Game() {
   }
   async function loadAdmin() {
     setLoading(true); setError("");
-    try { setParty(await fetchParty()); } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
+    try {
+      // Com GitHub ligado neste aparelho, a versão do repositório é a mais recente (o Pages demora 1–2 min)
+      let saved: GitHubTarget | null = null;
+      try { saved = JSON.parse(store.get(KEY_GITHUB) || "null"); } catch { /* ignorado */ }
+      const remote = saved?.token ? await fetchRemote({ ...guessTarget(), ...saved }).catch(() => null) : null;
+      setParty(remote?.file ?? await fetchParty());
+    } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
     setHasDraft(!!store.get(KEY_DRAFT));
   }
 
@@ -125,6 +133,14 @@ export default function Game() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
+  // Sincronização: a cada 20 s e quando a janela volta a estar ativa
+  useEffect(() => {
+    if (!online || !data || modal || confirm || busy || dirty) return;
+    const tick = () => { void refresh(); };
+    const t = setInterval(tick, 20000);
+    window.addEventListener("focus", tick);
+    return () => { clearInterval(t); window.removeEventListener("focus", tick); };
+  }, [online, data, modal, confirm, busy, dirty]);
   // Accessibilité des fenêtres modales (focus piégé, Échap)
   useEffect(() => {
     if (!modal && !confirm) return;
@@ -172,7 +188,15 @@ export default function Game() {
         if (password.length < 8) throw new Error("Escolhe uma palavra-passe com pelo menos 8 caracteres.");
         if (password !== password2) throw new Error("As duas palavras-passe não coincidem.");
       }
-      const published = party ? await openAdmin(party, password) : null;
+      let source = party, connected = false;
+      if (gh.token) {
+        try {
+          const remote = await fetchRemote(gh);
+          source = remote?.file ?? null; remoteSha.current = remote?.sha ?? null; connected = true; setParty(source);
+        } catch (err) { setNotice(`Sem ligação ao GitHub: ${(err as Error).message}`); }
+      }
+      const published = source ? await openAdmin(source, password) : null;
+      if (source && !published && connected) throw new Error("Palavra-passe incorreta.");
       let local: PartyData | null = null;
       const rawDraft = store.get(KEY_DRAFT);
       const savedDraft: Draft | null = rawDraft ? JSON.parse(rawDraft) : null;
@@ -186,16 +210,60 @@ export default function Game() {
       const newer = local && (!published || local.updatedAt > published.updatedAt);
       const base = newer ? local : published;
       setData(base ? migrate(base) : { players: [], updatedAt: Date.now() });
-      setDirty(!!newer || creating);
+      setDirty(!!newer || (creating && !connected));
+      setOnline(connected);
       pw.current = password; setPassword(""); setPassword2("");
       if (newer && published) setNotice("Recuperámos alterações guardadas neste aparelho que ainda não foram publicadas.");
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
   function lock() {
     if (dirty && !window.confirm("Há alterações por publicar. Ficam guardadas neste aparelho. Sair mesmo assim?")) return;
-    setData(null); pw.current = ""; dkey.current = null; setDirty(false); setHasDraft(!!store.get(KEY_DRAFT));
+    setData(null); pw.current = ""; dkey.current = null; setDirty(false); setOnline(false); setHasDraft(!!store.get(KEY_DRAFT));
   }
   function change(next: Omit<PartyData, "updatedAt">) { setData({ ...next, updatedAt: Date.now() }); setDirty(true); }
+
+  // Aplica uma alteração. Com GitHub ligado: lê a versão mais recente, aplica a alteração por cima
+  // (assim não se apagam as alterações da outra pessoa), cifra e grava. Sem GitHub: fica neste aparelho.
+  async function commit(op: (d: PartyData) => PartyData, message: string, newPassword?: string): Promise<boolean> {
+    if (!data) return false;
+    if (!online) { change(op(data)); return true; }
+    setBusy(true); setError("");
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const remote = await fetchRemote(gh);
+        const base = remote ? await openAdmin(remote.file, pw.current) : { players: [], updatedAt: 0 };
+        if (!base) throw new Error("A palavra-passe da festa foi alterada noutro aparelho. Fecha os bastidores e volta a entrar.");
+        const next: PartyData = { ...op(migrate(base)), updatedAt: Date.now() };
+        const password = newPassword ?? pw.current;
+        const file = await buildPartyFile(next, password, remote?.file.iter ?? ITERATIONS, newPassword ? undefined : remote?.file.salt);
+        try {
+          remoteSha.current = await writeRemote(gh, file, remote?.sha ?? null, message);
+        } catch (err) { if (err instanceof ConflictError) continue; throw err; }
+        pw.current = password;
+        if (newPassword) dkey.current = await draftKey(newPassword);
+        setData(next); setParty(file); setDirty(false);
+        if (dkey.current) store.set(KEY_DRAFT, JSON.stringify(await sealDraft(dkey.current, next)));
+        return true;
+      }
+      throw new Error("Muitas alterações ao mesmo tempo. Tenta outra vez.");
+    } catch (err) {
+      setError((err as Error).message);
+      return false;
+    } finally { setBusy(false); }
+  }
+
+  // Vai buscar alterações feitas noutro aparelho (Rosa ↔ André)
+  async function refresh(quiet = true) {
+    if (!online || !data || dirty) return;
+    try {
+      const remote = await fetchRemote(gh);
+      if (!remote || remote.sha === remoteSha.current) return;
+      const fresh = await openAdmin(remote.file, pw.current);
+      if (!fresh) return;
+      remoteSha.current = remote.sha; setParty(remote.file); setData(migrate(fresh));
+      if (!quiet) setNotice("Atualizado com as últimas alterações.");
+    } catch { /* sem rede: tenta na próxima vez */ }
+  }
 
   function editPlayer(p?: Player) {
     setError("");
@@ -207,49 +275,61 @@ export default function Game() {
   }
   const field = (key: string, value: string) => setDraft({ ...draft, [key]: value });
 
-  function save(e: FormEvent) {
+  async function save(e: FormEvent) {
     e.preventDefault(); if (!data) return; setError("");
-    try {
-      const name = draft.name.trim(), c = normalizeCode(draft.code || "");
-      if (!name) throw new Error("Indica o nome do jogador.");
-      if (c.length < 4) throw new Error("O código deve ter pelo menos 4 letras ou números.");
-      if (data.players.some((p) => p.code === c && p.id !== draft.id)) throw new Error("Este código já pertence a outro jogador.");
-      const p: Player = { id: draft.id || uid(), name, code: c, role: (draft.role || null) as Role | null, occupation: draft.occupation.trim() };
-      for (const s of sections) p[s.key] = draft[s.key] || "";
-      change({ ...data, players: draft.id ? data.players.map((x) => x.id === p.id ? p : x) : [...data.players, p] });
-      setModal(null); setNotice("Guardado. Não te esqueças de publicar.");
-    } catch (err) { setError((err as Error).message); }
+    const name = draft.name.trim(), c = normalizeCode(draft.code || "");
+    if (!name) { setError("Indica o nome do jogador."); return; }
+    if (c.length < 4) { setError("O código deve ter pelo menos 4 letras ou números."); return; }
+    const p: Player = { id: draft.id || uid(), name, code: c, role: (draft.role || null) as Role | null, occupation: draft.occupation.trim() };
+    for (const s of sections) p[s.key] = draft[s.key] || "";
+    const ok = await commit((d) => {
+      if (d.players.some((x) => x.code === c && x.id !== p.id)) throw new Error("Este código já pertence a outro jogador. Gera outro.");
+      return { ...d, players: d.players.some((x) => x.id === p.id) ? d.players.map((x) => x.id === p.id ? p : x) : [...d.players, p] };
+    }, `${draft.id ? "Editar" : "Adicionar"} jogador ${name}`);
+    if (ok) { setModal(null); setNotice(online ? "Guardado ✓ Os convidados veem a alteração dentro de 1–2 minutos." : "Guardado neste aparelho. Não te esqueças de publicar."); }
   }
-  function remove() {
+  async function remove() {
     if (!data || !confirm) return;
-    change({ ...data, players: data.players.filter((p) => p.id !== confirm.id) });
-    setConfirm(null); setNotice("Eliminado.");
+    const { id, name } = confirm;
+    if (await commit((d) => ({ ...d, players: d.players.filter((p) => p.id !== id) }), `Eliminar jogador ${name}`)) { setConfirm(null); setNotice("Eliminado."); }
   }
 
   async function publish() {
     if (!data) return;
+    if (online) {
+      const local = data;
+      if (await commit(() => local, "Enviar alterações guardadas neste aparelho")) setNotice("Enviado ✓ Os convidados veem dentro de 1–2 minutos.");
+      return;
+    }
     setBusy(true); setError("");
     try {
       const file = await buildPartyFile(data, pw.current);
-      if (gh.token) {
-        await publishToGitHub(gh, file);
-        setNotice("Publicado no GitHub! O site atualiza dentro de 1 a 2 minutos.");
-      } else {
-        download("party.json", JSON.stringify(file));
-        setNotice("party.json descarregado. Envia-o para a pasta public/ do repositório no GitHub.");
-      }
+      download("party.json", JSON.stringify(file));
+      setNotice("party.json descarregado. Envia-o para a pasta public/ do repositório no GitHub.");
       setParty(file); setDirty(false);
       if (dkey.current) store.set(KEY_DRAFT, JSON.stringify(await sealDraft(dkey.current, { ...data, updatedAt: file.updatedAt })));
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
-  function saveGitHub(e: FormEvent) {
-    e.preventDefault();
-    store.set(KEY_GITHUB, JSON.stringify(gh)); setNotice("Ligação ao GitHub guardada neste aparelho.");
+  async function saveGitHub(e: FormEvent) {
+    e.preventDefault(); setError("");
+    store.set(KEY_GITHUB, JSON.stringify(gh));
+    if (!gh.token) { setOnline(false); setNotice("Token removido. As alterações ficam neste aparelho até publicar."); return; }
+    setBusy(true);
+    try {
+      const remote = await fetchRemote(gh);
+      const fresh = remote ? await openAdmin(remote.file, pw.current) : null;
+      if (remote && !fresh) throw new Error("A festa no GitHub usa outra palavra-passe.");
+      remoteSha.current = remote?.sha ?? null; setOnline(true);
+      if (fresh && !dirty) { setData(migrate(fresh)); setParty(remote!.file); }
+      setNotice(dirty ? "GitHub ligado ✓ Carrega em Enviar agora para gravar as alterações deste aparelho." : "GitHub ligado ✓ A partir de agora, Guardar grava logo online.");
+    } catch (err) { setOnline(false); setError((err as Error).message); } finally { setBusy(false); }
   }
   async function changePassword(e: FormEvent) {
     e.preventDefault(); setError("");
     if (newPw.length < 8) { setError("Escolhe uma palavra-passe com pelo menos 8 caracteres."); return; }
-    pw.current = newPw; dkey.current = await draftKey(newPw); setNewPw("");
+    const next = newPw;
+    if (online) { if (await commit((d) => d, "Alterar palavra-passe da organização", next)) { setNewPw(""); setNotice("Palavra-passe alterada ✓ Avisa a Rosa."); } return; }
+    pw.current = next; dkey.current = await draftKey(next); setNewPw("");
     if (data) change(data);
     setNotice("Palavra-passe alterada. Publica para a aplicar.");
   }
@@ -262,7 +342,8 @@ export default function Game() {
     try {
       const parsed = JSON.parse(await file.text()) as PartyData;
       if (!Array.isArray(parsed.players)) throw new Error();
-      change(migrate(parsed)); setNotice("Cópia importada. Revê e publica.");
+      const imported = migrate(parsed);
+      if (await commit(() => imported, "Importar cópia de segurança")) setNotice(online ? "Cópia importada e guardada ✓" : "Cópia importada. Revê e publica.");
     } catch { setError("Ficheiro inválido."); }
   }
   async function copy(text: string, ok: string) {
@@ -281,7 +362,7 @@ export default function Game() {
     {notice && <div role="status" className="toast"><Check size={18}/>{notice}</div>}
 
     {mode === "admin" ? <div className="dashboard">
-      <aside><div className="event-label">A TUA FESTA</div><h3>O Assassinato<br/>do Gabriel.</h3><div className="tag"><span/> {dirty ? "Por publicar" : "Preparação"}</div><nav>
+      <aside><div className="event-label">A TUA FESTA</div><h3>O Assassinato<br/>do Gabriel.</h3><div className={`tag ${online && !dirty ? "" : "warn"}`}><span/> {busy ? "A guardar…" : dirty ? "Por enviar" : online ? "Sincronizado" : data ? "Sem ligação GitHub" : "Preparação"}</div><nav>
         <button className={tab === "players" ? "active" : ""} onClick={() => { setTab("players"); setSearch(""); }}><Users size={18}/>Jogadores<span>{data?.players.length || 0}</span></button>
         <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings size={18}/>Publicação</button>
       </nav><div className="aside-note"><ShieldCheck size={22}/><p>Os segredos ficam convosco.</p><small>Tudo é cifrado. Cada jogador só consegue abrir o seu papel com o seu código.</small></div><div className="aside-bottom">ORGANIZADO POR<br/><strong>André & Rosa</strong></div></aside>
@@ -299,21 +380,25 @@ export default function Game() {
           </form>}
         </div> : <>
           <div className="page-heading"><div><div className="eyebrow">ÁREA DE ORGANIZAÇÃO / {tab === "players" ? "CONVIDADOS" : "PUBLICAÇÃO"}</div><h1>{tab === "players" ? "O elenco da noite." : "Dois cúmplices. Um plano."}</h1><p>{tab === "players" ? "Adicionem os amigos e escolham o papel de cada um." : "Liguem o GitHub, guardem uma cópia e publiquem."}</p></div>{tab === "players" && <button className="primary" onClick={() => editPlayer()}><Plus size={17}/>Adicionar jogador</button>}</div>
-          {dirty && <div className="publish-bar"><div><UploadCloud size={20}/><span><strong>Alterações por publicar.</strong> Os jogadores só as veem depois de publicar.</span></div><button className="primary" disabled={busy} onClick={publish}>{busy ? "A publicar…" : gh.token ? "Publicar no GitHub" : "Descarregar party.json"} <UploadCloud size={16}/></button></div>}
+          {dirty && <div className="publish-bar"><div><UploadCloud size={20}/><span><strong>{online ? "Alterações deste aparelho por enviar." : "Alterações por publicar."}</strong> {online ? "Os outros só as veem depois de enviar." : "Liga o GitHub em Publicação para que Guardar grave logo online."}</span></div><button className="primary" disabled={busy} onClick={publish}>{busy ? "A enviar…" : online ? "Enviar agora" : "Descarregar party.json"} <UploadCloud size={16}/></button></div>}
+          {!online && !dirty && <div className="publish-bar soft"><div><CloudOff size={20}/><span><strong>GitHub não ligado.</strong> Liga-o uma vez em Publicação: depois, Guardar grava tudo online e tu e a Rosa veem as mesmas coisas.</span></div><button className="secondary" onClick={() => setTab("settings")}>Ligar o GitHub</button></div>}
           {error && !modal && !confirm && <p role="alert" className="error">{error}</p>}
           <div className="stats"><div><span>CONVIDADOS</span><strong>{String(data.players.length).padStart(2, "0")}</strong><Users/></div><div><span>PAPÉIS ESCOLHIDOS</span><strong>{String(withRole).padStart(2, "0")}<small> / {data.players.length}</small></strong><VenetianMask/></div><div><span>DOSSIÊS ESCRITOS</span><strong>{String(withDossier).padStart(2, "0")}<small> / {data.players.length}</small></strong><BookOpen/></div></div>
 
           {tab === "settings" ? <section className="panel settings">
             <h2><Github size={20}/> Ligação ao GitHub</h2>
-            <p>Com um token, o botão Publicar envia a festa diretamente para o repositório e o site atualiza sozinho. Sem token, descarregas o ficheiro party.json e envias à mão para a pasta <code>public/</code>.</p>
+            <p>{online ? <><Cloud size={14}/> Ligado. Cada Guardar grava logo no GitHub e as alterações da outra pessoa aparecem sozinhas.</> : "Cola o token uma vez neste aparelho (e uma vez no da Rosa). A partir daí, Guardar grava tudo online — sem ficheiros."}</p>
             <form onSubmit={saveGitHub}>
               <div className="form-row"><label>Dono<input value={gh.owner} onChange={(e) => setGh({ ...gh, owner: e.target.value.trim() })}/></label><label>Repositório<input value={gh.repo} onChange={(e) => setGh({ ...gh, repo: e.target.value.trim() })}/></label></div>
               <div className="form-row"><label>Ramo<input value={gh.branch} onChange={(e) => setGh({ ...gh, branch: e.target.value.trim() })}/></label><label>Token (fine-grained, Contents: read & write)<input type="password" autoComplete="off" value={gh.token} onChange={(e) => setGh({ ...gh, token: e.target.value.trim() })} placeholder="github_pat_…"/></label></div>
-              <button className="primary">Guardar neste aparelho <Check size={16}/></button>
+              <button className="primary" disabled={busy}>{busy ? "A ligar…" : "Ligar e guardar neste aparelho"} <Check size={16}/></button>
             </form>
             <div className="note"><LockKeyhole size={18}/><p>O token fica só neste navegador. Nunca é publicado.</p></div>
+            <h2><QrCode size={20}/> QR code para a porta</h2>
+            <p>Imprimam e ponham à entrada. Os convidados leem o QR, metem o código de 6 caracteres e descobrem o papel.</p>
+            <div className="button-line"><button className="secondary" onClick={() => setModal("qr")}><QrCode size={15}/> Abrir QR para imprimir</button></div>
             <h2><KeyRound size={20}/> Palavra-passe da organização</h2>
-            <form onSubmit={changePassword}><label>Nova palavra-passe<input type="password" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)}/></label><button className="secondary">Alterar palavra-passe</button></form>
+            <form onSubmit={changePassword}><label>Nova palavra-passe (a Rosa terá de usar a nova)<input type="password" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)}/></label><button className="secondary" disabled={busy}>Alterar palavra-passe</button></form>
             <h2><Download size={20}/> Cópia de segurança</h2>
             <p>Ficheiro <strong>não cifrado</strong> com tudo (segredos e códigos). Guardem-no num sítio privado — nunca no GitHub.</p>
             <div className="button-line"><button className="secondary" onClick={exportBackup}><Download size={15}/> Exportar cópia</button><label className="secondary file-button"><Upload size={15}/> Importar cópia<input type="file" accept="application/json" onChange={(e) => { void importBackup(e.target.files?.[0]); e.target.value = ""; }}/></label></div>
@@ -348,7 +433,7 @@ export default function Game() {
         <div className="player-footer">O ASSASSINATO DO GABRIEL <span>O assassino pode estar mesmo ao teu lado.</span></div></>}
     </main>}
 
-    {modal && data && <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}><section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="modal"><button className="close" aria-label="Fechar" onClick={() => setModal(null)}><X/></button><div className="eyebrow">NOS BASTIDORES</div><h2 id="dialog-title">{draft.id ? "Editar" : "Adicionar"} jogador</h2>
+    {modal === "player" && data && <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}><section role="dialog" aria-modal="true" aria-labelledby="dialog-title" className="modal"><button className="close" aria-label="Fechar" onClick={() => setModal(null)}><X/></button><div className="eyebrow">NOS BASTIDORES</div><h2 id="dialog-title">{draft.id ? "Editar" : "Adicionar"} jogador</h2>
       <form onSubmit={save}><label>Nome do jogador<input autoFocus required maxLength={100} value={draft.name} onChange={(e) => field("name", e.target.value)} placeholder="Ex.: Diogo"/></label>
         <label>Código secreto<div className="code-row"><input className="code-input" required maxLength={20} value={draft.code} onChange={(e) => field("code", e.target.value.toUpperCase())}/><button type="button" className="secondary" title="Gerar outro código" onClick={() => field("code", formatCode(generateCode(data.players.map((p) => p.code))))}><Dices size={16}/></button></div><small>Gerado automaticamente. É com ele que o jogador entra.</small></label>
         <label>Papel<select value={draft.role || ""} onChange={(e) => field("role", e.target.value)}><option value="">Escolher mais tarde</option>{Object.entries(roles).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select><small>É o que o jogador vê em "O teu papel" quando entra com o código.</small></label>
@@ -357,7 +442,15 @@ export default function Game() {
           <label>Subtítulo<input maxLength={100} value={draft.occupation} onChange={(e) => field("occupation", e.target.value)} placeholder="Ex.: O amigo traído"/></label>
           {sections.map(({ key: k, label }) => <label key={k}>{label}<textarea maxLength={6000} rows={k === "story" || k === "secrets" ? 5 : 3} value={draft[k]} onChange={(e) => field(k, e.target.value)} placeholder="Só este jogador vê este texto."/></label>)}
         </>}
-        {error && <p role="alert" className="error">{error}</p>}<div className="modal-actions"><button type="button" className="quiet" onClick={() => setModal(null)}>Cancelar</button><button className="primary">Guardar<Check size={16}/></button></div></form></section></div>}
+        {error && <p role="alert" className="error">{error}</p>}<div className="modal-actions"><button type="button" className="quiet" disabled={busy} onClick={() => setModal(null)}>Cancelar</button><button className="primary" disabled={busy}>{busy ? "A guardar…" : "Guardar"}<Check size={16}/></button></div></form></section></div>}
+    {modal === "qr" && <div className="overlay qr-overlay" onClick={(e) => { if (e.target === e.currentTarget) setModal(null); }}><section role="dialog" aria-modal="true" aria-labelledby="qr-title" className="modal qr-sheet"><button className="close no-print" aria-label="Fechar" onClick={() => setModal(null)}><X/></button>
+      <div className="qr-brand"><Fingerprint size={30}/><span>O ASSASSINATO DO GABRIEL</span></div>
+      <h2 id="qr-title">Entra no mistério.</h2>
+      <img className="qr-img" alt={`QR code para ${siteUrl()}`} src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=12&data=${encodeURIComponent(siteUrl())}`}/>
+      <ol className="qr-steps"><li>Lê o QR code com o telemóvel</li><li>Mete o teu <strong>código secreto</strong> de 6 caracteres</li><li>Descobre o teu papel… e guarda-o para ti</li></ol>
+      <p className="qr-url">{siteUrl().replace(/^https?:\/\//, "")}</p>
+      <div className="modal-actions no-print"><button className="quiet" onClick={() => setModal(null)}>Fechar</button><button className="primary" onClick={() => window.print()}><Printer size={16}/> Imprimir</button></div>
+    </section></div>}
     {confirm && <div className="overlay"><section role="dialog" aria-modal="true" aria-labelledby="confirm-title" className="modal compact"><h2 id="confirm-title">Eliminar {confirm.name}?</h2><p>O jogador deixará de ter acesso ao jogo depois de publicar.</p><div className="modal-actions"><button className="quiet" onClick={() => setConfirm(null)}>Cancelar</button><button className="primary danger" onClick={remove}>Eliminar</button></div></section></div>}
   </div>;
 }

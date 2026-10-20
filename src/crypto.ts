@@ -57,7 +57,15 @@ export function generateCode(taken: Iterable<string> = []): string {
   }
 }
 
-async function deriveKey(secret: string, salt: Uint8Array, iter: number, purpose: "admin" | "player"): Promise<CryptoKey> {
+// Cache em memória: com o mesmo sal, cada chave só é calculada uma vez (gravações rápidas no telemóvel).
+const keyCache = new Map<string, Promise<CryptoKey>>();
+function deriveKey(secret: string, salt: Uint8Array, iter: number, purpose: "admin" | "player"): Promise<CryptoKey> {
+  const id = `${purpose}|${iter}|${toB64(salt)}|${secret}`;
+  let k = keyCache.get(id);
+  if (!k) { k = deriveKeyRaw(secret, salt, iter, purpose); keyCache.set(id, k); k.catch(() => keyCache.delete(id)); }
+  return k;
+}
+async function deriveKeyRaw(secret: string, salt: Uint8Array, iter: number, purpose: "admin" | "player"): Promise<CryptoKey> {
   const base = await subtle().importKey("raw", enc.encode(secret), "PBKDF2", false, ["deriveKey"]);
   const fullSalt = new Uint8Array([...salt, ...enc.encode(purpose)]);
   return subtle().deriveKey(
@@ -99,8 +107,9 @@ export function resolvePlayer(p: Player, characters: Character[] = []): Omit<Pla
   return out;
 }
 
-export async function buildPartyFile(data: PartyData, password: string, iter = ITERATIONS): Promise<PartyFile> {
-  const salt = random(16);
+// keepSalt : reutiliza o sal do ficheiro atual para aproveitar as chaves já calculadas
+export async function buildPartyFile(data: PartyData, password: string, iter = ITERATIONS, keepSalt?: string): Promise<PartyFile> {
+  const salt = keepSalt ? fromB64(keepSalt) : random(16);
   const updatedAt = Date.now();
   const full: PartyData = { ...data, updatedAt };
   const admin = await seal(await deriveKey(password, salt, iter, "admin"), full);
@@ -134,6 +143,9 @@ export function isPartyFile(x: unknown): x is PartyFile {
 
 export function fileToBase64Utf8(text: string): string {
   return toB64(enc.encode(text));
+}
+export function base64Utf8ToText(b64: string): string {
+  return dec.decode(fromB64(b64.replace(/\s/g, "")));
 }
 
 // Rascunho local (localStorage) chiffré avec le mot de passe de l'organisation.

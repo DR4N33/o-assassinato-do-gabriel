@@ -18,11 +18,10 @@ Aplicação em português para uma festa Murder Mystery de Halloween. Site 100 %
 
 1. Abrir `https://<utilizador>.github.io/o-assassinato-do-gabriel/?mode=admin`.
 2. Primeira vez: escolher a palavra-passe da organização (partilhar só com a Rosa).
-3. Adicionar os jogadores e escolher o papel de cada um. As alterações ficam guardadas (cifradas) neste aparelho até publicar.
-4. **Publicar**:
-   - **Com token (recomendado)**: em *Publicação*, colar um *fine-grained personal access token* (GitHub → Settings → Developer settings → Fine-grained tokens → acesso só a este repositório, permissão **Contents: Read and write**). O botão *Publicar no GitHub* envia o ficheiro e o site atualiza em 1–2 minutos.
-   - **Sem token**: o botão descarrega `party.json`; enviá-lo para a pasta `public/` do repositório (Add file → Upload files).
-5. Copiar o convite de cada jogador (ícone ao lado do nome) e enviar por WhatsApp/SMS.
+3. **Ligar o GitHub (uma vez por aparelho)**: em *Publicação*, colar um *fine-grained personal access token* (GitHub → Settings → Developer settings → Fine-grained tokens → acesso só a este repositório, permissão **Contents: Read and write**). Fazer o mesmo no telemóvel da Rosa.
+4. Adicionar os jogadores e escolher o papel de cada um. **Guardar grava logo no GitHub**: a app vai sempre buscar a versão mais recente antes de gravar (o André e a Rosa podem trabalhar ao mesmo tempo sem apagar o trabalho do outro) e atualiza-se sozinha com as alterações do outro. Os convidados veem as alterações 1–2 minutos depois.
+   - Sem token: as alterações ficam no aparelho e o botão descarrega `party.json` para enviar à mão para `public/`.
+5. **No dia**: em *Publicação → QR code para a porta*, imprimir o QR. Os convidados leem o QR, metem o código de 6 caracteres e descobrem o papel. (Também se pode copiar o convite pessoal de cada jogador — ícone ao lado do nome.)
 
 Exportar uma cópia de segurança em *Publicação* (ficheiro **não cifrado**: guardar em privado, nunca no GitHub).
 

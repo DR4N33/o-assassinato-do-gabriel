@@ -69,3 +69,22 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 .pre{white-space:pre-line}
 @media(max-width:760px){.publish-bar{flex-direction:column;align-items:stretch}}
 .dossier-toggle{display:inline-flex;align-items:center;gap:6px;margin:4px 0;font-size:12px}.dossier-toggle svg{transition:transform .2s}.dossier-toggle.open svg{transform:rotate(180deg)}
+.tag.warn span{background:#e0a35a}.publish-bar.soft{border-color:var(--line);background:var(--panel)}.publish-bar.soft>div{color:var(--muted)}
+.settings p svg{vertical-align:-2px;color:var(--accent)}
+/* QR code para imprimir */
+.qr-sheet{max-width:480px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+.qr-brand{display:flex;align-items:center;gap:10px;font-family:Manrope,sans-serif;font-weight:800;letter-spacing:3px;font-size:13px;color:var(--accent)}
+.qr-sheet h2{font:34px "Playfair Display",serif}
+.qr-img{width:min(320px,70vw);aspect-ratio:1;background:#fff;border-radius:10px;padding:6px}
+.qr-steps{text-align:left;color:var(--cream);font-size:15px;line-height:1.9;margin:0;padding-left:22px}
+.qr-url{font-size:12px;letter-spacing:1px}
+@media print{
+  @page{margin:12mm}
+  body *{visibility:hidden}
+  .qr-sheet,.qr-sheet *{visibility:visible}
+  .no-print{display:none!important}
+  .qr-overlay{position:static;background:none;backdrop-filter:none;padding:0}
+  .qr-sheet{position:absolute;inset:0;margin:auto;max-width:none;max-height:none;border:0;box-shadow:none;background:#fff;color:#111}
+  .qr-sheet h2,.qr-steps,.qr-url,.qr-brand{color:#111!important}
+  .qr-img{width:110mm}
+}
