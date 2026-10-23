@@ -269,6 +269,8 @@ export default function Game() {
   function lock() {
     if (dirty && !window.confirm("Há alterações por publicar. Ficam guardadas neste aparelho. Sair mesmo assim?")) return;
     setData(null); pw.current = ""; dkey.current = null; setDirty(false); setOnline(false); setHasDraft(!!store.get(KEY_DRAFT));
+    // Depois de fechar os bastidores, volta à página de entrada dos convidados
+    setError(""); setMode("player"); window.history.replaceState(null, "", window.location.pathname); void loadPlayer();
   }
   function change(next: Omit<PartyData, "updatedAt">) { setData({ ...next, updatedAt: Date.now() }); setDirty(true); }
 
