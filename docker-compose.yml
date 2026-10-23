@@ -5,8 +5,8 @@
 #   → http://<ip-do-servidor>:8080   (organização: http://<ip>:8080/?mode=admin)
 #
 # Acesso pela internet sem abrir portas (Rosa fora de casa, convidados com dados móveis):
-#   define TUNNEL_TOKEN no .env e arranca também o túnel Cloudflare:
-#   docker compose --profile tunnel up -d --build
+#   - sem domínio: Tailscale Funnel → TS_AUTHKEY no .env → docker compose --profile funnel up -d --build
+#   - com domínio no Cloudflare: TUNNEL_TOKEN no .env → docker compose --profile tunnel up -d --build
 
 services:
   app:
@@ -32,5 +32,25 @@ services:
       - app
     profiles: ["tunnel"]
 
+  # Endereço público fixo sem domínio e sem abrir portas (Tailscale Funnel):
+  #   define TS_AUTHKEY no .env e arranca com: docker compose --profile funnel up -d --build
+  funnel:
+    image: tailscale/tailscale:stable
+    container_name: assassinato-gabriel-funnel
+    hostname: assassinato-gabriel
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    depends_on:
+      - app
+    profiles: ["funnel"]
+
 volumes:
   festa-data:
+  tailscale-state:
