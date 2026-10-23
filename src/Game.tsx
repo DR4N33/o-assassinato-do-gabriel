@@ -109,12 +109,20 @@ export default function Game() {
   async function loadAdmin(srv = server) {
     setLoading(true); setError("");
     try {
-      if (srv) { setParty((await storeFor(true).fetch())?.file ?? null); return; }
+      // Se a festa já existe, a entrada nos bastidores faz-se pela página dos convidados (palavra-passe no campo do código).
+      // O ecrã de palavra-passe só aparece na primeira vez, para criar a festa.
+      const toGuestPage = (exists: boolean) => {
+        if (!exists) return false;
+        setMode("player"); window.history.replaceState(null, "", window.location.pathname); void loadPlayer(); return true;
+      };
+      if (srv) { const f = (await storeFor(true).fetch())?.file ?? null; setParty(f); toGuestPage(!!f); return; }
       // Com GitHub ligado neste aparelho, a versão do repositório é a mais recente (o Pages demora 1–2 min)
       let saved: GitHubTarget | null = null;
       try { saved = JSON.parse(store.get(KEY_GITHUB) || "null"); } catch { /* ignorado */ }
       const remote = saved?.token ? await githubStore({ ...guessTarget(), ...saved }).fetch().catch(() => null) : null;
-      setParty(remote?.file ?? await fetchParty());
+      const f = remote?.file ?? await fetchParty();
+      setParty(f);
+      if (toGuestPage(!!f)) return;
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); setHasDraft(!!store.get(KEY_DRAFT)); }
   }
 
