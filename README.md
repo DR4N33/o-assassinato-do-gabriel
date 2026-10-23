@@ -43,6 +43,15 @@ docker compose up -d --build
 - Dados no volume `festa-data` (`/data/party.json`, cifrado). Backup: `docker compose cp app:/data/party.json ./party-backup.json`.
 - Atualizar depois de mudanças no código: `git pull && docker compose up -d --build`.
 
+### Convidados com PIN (só no modo Docker)
+
+1. 1.ª entrada: o convidado mete o **código de 6 caracteres** (ou abre o link pessoal).
+2. A app obriga-o a criar um **PIN de 4 dígitos** (único por jogador). O código de origem deixa de funcionar.
+3. Entradas seguintes, em qualquer aparelho: só o **PIN**.
+4. PIN esquecido: nos bastidores, botão ↺ ao lado do jogador → **Repor o PIN**. O código de origem volta a funcionar e o convidado cria um PIN novo.
+
+Tentativas limitadas por IP (10 erros / 10 min). Os PIN ficam em `/data/pins.json` (hash scrypt; código de origem cifrado com `/data/secret.key`).
+
 ### Acesso pela internet (Cloudflare Tunnel, sem abrir portas)
 
 1. Cloudflare → **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo *Cloudflared*) → copiar o token.

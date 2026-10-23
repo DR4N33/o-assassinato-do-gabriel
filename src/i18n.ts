@@ -12,6 +12,8 @@ type Dict = {
   unknownCode: string; notPublished: string; loadError: string;
   confidential: string; leave: string; tonight: string; hiddenFile: string; eyesOnly: string; show: string; hide: string;
   yourRole: string; closing: string; waitingTitle: [string, string]; waitingText: (name: string) => string; checkUpdates: string;
+  codeOrPin: string; codeOrPinHint: string; pinTitle: string; pinText: string; pinLabel: string; pinConfirm: string; pinSave: string;
+  pinMismatch: string; pinFormat: string; pinTaken: string; pinBad: string; codeReplaced: string; tooMany: string; network: string; pinNote: string;
   sections: Record<"story" | "secrets" | "alibi" | "information" | "objective", string>;
   roles: Record<Role, string>; roleMessages: Record<Role, string>;
 };
@@ -39,6 +41,19 @@ export const T: Record<Lang, Dict> = {
     waitingTitle: ["O teu papel", "está a caminho."],
     waitingText: (n) => `Olá, ${n}. A organização ainda está a decidir quem és esta noite.`,
     checkUpdates: "Verificar atualizações",
+    codeOrPin: "O teu código ou PIN",
+    codeOrPinHint: "1.ª vez: o código de 6 caracteres. Depois: o teu PIN de 4 dígitos.",
+    pinTitle: "Cria o teu PIN.",
+    pinText: "Escolhe 4 dígitos. A partir de agora entras só com eles — o código de 6 caracteres deixa de funcionar.",
+    pinLabel: "PIN (4 dígitos)", pinConfirm: "Repetir o PIN", pinSave: "Guardar o meu PIN",
+    pinMismatch: "Os dois PIN não coincidem.",
+    pinFormat: "O PIN tem de ter exatamente 4 dígitos.",
+    pinTaken: "Este PIN já está a ser usado por outro jogador. Escolhe outro.",
+    pinBad: "PIN incorreto.",
+    codeReplaced: "Este código já foi substituído por um PIN. Entra com o teu PIN — se o esqueceste, fala com a organização.",
+    tooMany: "Demasiadas tentativas. Espera 10 minutos (ou usa os dados móveis em vez do Wi-Fi).",
+    network: "Sem ligação ao servidor. Tenta outra vez.",
+    pinNote: "Não partilhes o teu PIN com ninguém.",
     sections: { story: "A minha história", secrets: "O meu segredo", alibi: "O meu álibi", information: "O que sei", objective: "O meu objetivo" },
     roles: {
       assassino: "Assassino", cumplice: "Cúmplice", amante: "Amante", agressor: "Agressor", amiga: "Amiga", amigo: "Amigo",
@@ -79,6 +94,19 @@ export const T: Record<Lang, Dict> = {
     waitingTitle: ["Ton rôle", "arrive bientôt."],
     waitingText: (n) => `Salut ${n}. L'organisation décide encore qui tu seras ce soir.`,
     checkUpdates: "Vérifier les mises à jour",
+    codeOrPin: "Ton code ou PIN",
+    codeOrPinHint: "1re fois : le code à 6 caractères. Ensuite : ton PIN à 4 chiffres.",
+    pinTitle: "Crée ton PIN.",
+    pinText: "Choisis 4 chiffres. Désormais tu entres uniquement avec eux — le code à 6 caractères ne fonctionnera plus.",
+    pinLabel: "PIN (4 chiffres)", pinConfirm: "Répète le PIN", pinSave: "Enregistrer mon PIN",
+    pinMismatch: "Les deux PIN ne correspondent pas.",
+    pinFormat: "Le PIN doit contenir exactement 4 chiffres.",
+    pinTaken: "Ce PIN est déjà utilisé par un autre joueur. Choisis-en un autre.",
+    pinBad: "PIN incorrect.",
+    codeReplaced: "Ce code a déjà été remplacé par un PIN. Entre avec ton PIN — si tu l'as oublié, parle à l'organisation.",
+    tooMany: "Trop de tentatives. Attends 10 minutes (ou utilise les données mobiles au lieu du Wi-Fi).",
+    network: "Pas de connexion au serveur. Réessaie.",
+    pinNote: "Ne partage ton PIN avec personne.",
     sections: { story: "Mon histoire", secrets: "Mon secret", alibi: "Mon alibi", information: "Ce que je sais", objective: "Mon objectif" },
     roles: {
       assassino: "Assassin", cumplice: "Complice", amante: "Amant(e)", agressor: "Agresseur", amiga: "Amie", amigo: "Ami",

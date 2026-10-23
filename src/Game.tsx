@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Fingerprint, ArrowRight, Plus, Users, VenetianMask, Settings, Search, X, LockKeyhole, LogOut, Eye, Pencil,
   Trash2, Check, Share2, RefreshCw, ShieldCheck, BookOpen, KeyRound, Clock3, FileQuestion, Copy, UploadCloud,
-  Download, Upload, Github, Dices, ChevronDown, QrCode, Printer, CloudOff, Cloud,
+  Download, Upload, Github, Dices, ChevronDown, RotateCcw, QrCode, Printer, CloudOff, Cloud,
 } from "lucide-react";
 import {
   buildPartyFile, draftKey, generateCode, isPartyFile, normalizeCode, openAdmin, openDraft, openPlayer, resolvePlayer, sealDraft,
   CODE_LENGTH, ITERATIONS, type Draft, type PartyData, type PartyFile, type Player, type PlayerView, type Role,
 } from "./crypto";
-import { ConflictError, detectServer, githubStore, guessTarget, serverLogin, serverStore, type GitHubTarget, type Store } from "./github";
+import { ConflictError, GuestApiError, adminPinReset, adminPinStatus, detectServer, githubStore, guessTarget, guestCode, guestPin, guestSetPin, serverExists, serverLogin, serverStore, type GitHubTarget, type GuestError, type Store } from "./github";
 import { Emblem, Logo, LogoText } from "./Logo";
 import { LANGS, T, type Lang } from "./i18n";
 
@@ -32,7 +32,7 @@ function migrate(d: PartyData): PartyData {
   if (!d.characters?.length) return { players: d.players, gh: d.gh, updatedAt: d.updatedAt };
   return { updatedAt: d.updatedAt, gh: d.gh, players: d.players.map((p) => { const r = resolvePlayer(p, d.characters); return { id: p.id, code: p.code, ...r }; }) };
 }
-const KEY_LANG = "mystery_lang", KEY_CODE = "mystery_code", KEY_DRAFT = "mystery_draft", KEY_GITHUB = "mystery_github";
+const KEY_PIN = "mystery_pin", KEY_LANG = "mystery_lang", KEY_CODE = "mystery_code", KEY_DRAFT = "mystery_draft", KEY_GITHUB = "mystery_github";
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -72,10 +72,18 @@ export default function Game() {
   const [lang, setLangState] = useState<Lang>(currentLang);
   const setLang = (l: Lang) => { setLangState(l); store.set(KEY_LANG, l); document.documentElement.lang = l === "fr" ? "fr" : "pt-PT"; };
   const t = T[lang];
+  const guestMsg = (e: unknown) => {
+    const k = e instanceof GuestApiError ? e.kind : "network";
+    const m: Record<GuestError, string> = { code_bad: t.unknownCode, code_replaced: t.codeReplaced, pin_bad: t.pinBad, pin_taken: t.pinTaken, pin_format: t.pinFormat, too_many: t.tooMany, not_published: t.notPublished, network: t.network };
+    return m[k];
+  };
   const [party, setParty] = useState<PartyFile | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   // joueur
   const [view, setView] = useState<PlayerView | null>(null), [code, setCode] = useState(""), [hidden, setHidden] = useState(false);
+  // Modo servidor: depois da 1.ª entrada com o código, o convidado cria um PIN de 4 dígitos
+  const [pinSetup, setPinSetup] = useState<{ code: string; view: PlayerView } | null>(null), [pin1, setPin1] = useState(""), [pin2, setPin2] = useState("");
+  const [withPin, setWithPin] = useState<Set<string>>(new Set());
   // organisation
   const [data, setData] = useState<PartyData | null>(null), [dirty, setDirty] = useState(false);
   const [password, setPassword] = useState(""), [password2, setPassword2] = useState(""), [hasDraft, setHasDraft] = useState(false);
@@ -91,8 +99,19 @@ export default function Game() {
   const storeFor = (srv = server, target = gh): Store => srv ? serverStore(() => pw.current) : githubStore(target);
 
   // linkCode : code reçu via le lien d'invitation (?codigo=…) ; sinon on reprend celui mémorisé sur l'appareil.
-  async function loadPlayer(linkCode?: string) {
+  async function loadPlayer(linkCode?: string, srv = server) {
     setLoading(true); setError("");
+    if (srv) {
+      try {
+        const saved = store.get(KEY_PIN);
+        if (linkCode) await enterWithCode(linkCode);
+        else if (saved) {
+          try { await enterWithPin(saved); }
+          catch (e) { store.del(KEY_PIN); if (!(e instanceof GuestApiError && e.kind === "pin_bad")) throw e; }
+        }
+      } catch (e) { setError(guestMsg(e)); } finally { setLoading(false); }
+      return;
+    }
     const c = linkCode || store.get(KEY_CODE) || "";
     try {
       const file = await fetchParty(); setParty(file);
@@ -113,9 +132,9 @@ export default function Game() {
       // O ecrã de palavra-passe só aparece na primeira vez, para criar a festa.
       const toGuestPage = (exists: boolean) => {
         if (!exists) return false;
-        setMode("player"); window.history.replaceState(null, "", window.location.pathname); void loadPlayer(); return true;
+        setMode("player"); window.history.replaceState(null, "", window.location.pathname); void loadPlayer(undefined, srv); return true;
       };
-      if (srv) { const f = (await storeFor(true).fetch())?.file ?? null; setParty(f); toGuestPage(!!f); return; }
+      if (srv) { toGuestPage(await serverExists()); return; }
       // Com GitHub ligado neste aparelho, a versão do repositório é a mais recente (o Pages demora 1–2 min)
       let saved: GitHubTarget | null = null;
       try { saved = JSON.parse(store.get(KEY_GITHUB) || "null"); } catch { /* ignorado */ }
@@ -135,7 +154,7 @@ export default function Game() {
     if (fromLink) { window.history.replaceState(null, "", window.location.pathname); setCode(fromLink); }
     void (async () => {
       const srv = await detectServer(); setServer(srv);
-      if (m === "admin") await loadAdmin(srv); else await loadPlayer(fromLink || undefined);
+      if (m === "admin") await loadAdmin(srv); else await loadPlayer(fromLink || undefined, srv);
     })();
   }, []);
   useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(""), 5000); return () => clearTimeout(t); }, [notice]);
@@ -160,6 +179,22 @@ export default function Game() {
     window.addEventListener("focus", tick);
     return () => { clearInterval(t); window.removeEventListener("focus", tick); };
   }, [online, data, modal, confirm, busy, dirty]);
+  // Modo servidor: que jogadores já criaram PIN
+  async function refreshPins() {
+    if (!server || !data || !pw.current) return;
+    try { setWithPin(new Set((await adminPinStatus(pw.current, data.players.map((p) => p.code))).withPin)); } catch { /* tenta depois */ }
+  }
+  useEffect(() => {
+    if (!server || !data) return;
+    void refreshPins();
+    const tm = setInterval(() => { void refreshPins(); }, 20000);
+    return () => clearInterval(tm);
+  }, [server, data?.players.length, data?.updatedAt]);
+  async function resetPin(p: Player) {
+    if (!window.confirm(`Repor o PIN de ${p.name}? O código de origem ${formatCode(p.code)} volta a funcionar e ${p.name} terá de criar um PIN novo.`)) return;
+    try { await adminPinReset(pw.current, p.code); setNotice(`PIN de ${p.name} reposto. Código de origem: ${formatCode(p.code)}`); await refreshPins(); }
+    catch (err) { setError((err as Error).message); }
+  }
   // Guarda o token dentro da festa (cifrado) para que os outros aparelhos se liguem só com a palavra-passe
   useEffect(() => {
     if (!online || server || !data || busy || dirty || !gh.token || data.gh?.token === gh.token) return;
@@ -191,8 +226,46 @@ export default function Game() {
   }
 
   // ---------- Joueur ----------
+  // ---------- Convidados em modo servidor (código → PIN) ----------
+  async function enterWithPin(pin: string) {
+    const r = await guestPin(pin);
+    const v = await openPlayer(r.file, r.code);
+    if (!v) throw new GuestApiError("pin_bad");
+    store.set(KEY_PIN, pin); setView(v); setCode(""); if (v.lang) setLang(v.lang);
+  }
+  async function enterWithCode(c: string) {
+    const r = await guestCode(c);
+    const v = await openPlayer(r.file, c);
+    if (!v) throw new GuestApiError("code_bad");
+    if (v.lang) setLang(v.lang);
+    setPin1(""); setPin2(""); setCode(""); setPinSetup({ code: normalizeCode(c), view: v });
+  }
+  async function savePin(e: FormEvent) {
+    e.preventDefault(); if (!pinSetup) return; setError("");
+    if (!/^\d{4}$/.test(pin1)) { setError(t.pinFormat); return; }
+    if (pin1 !== pin2) { setError(t.pinMismatch); return; }
+    setBusy(true);
+    try {
+      await guestSetPin(pinSetup.code, pin1);
+      store.set(KEY_PIN, pin1); setView(pinSetup.view); setPinSetup(null); setPin1(""); setPin2("");
+    } catch (err) { setError(guestMsg(err)); } finally { setBusy(false); }
+  }
+  async function loginServer() {
+    const input = code.trim();
+    if (/^\d{4}$/.test(input)) { await enterWithPin(input); return; }
+    if (normalizeCode(input).length === CODE_LENGTH && input.length <= CODE_LENGTH + 2) { await enterWithCode(input); return; }
+    if (input.length >= 8) {
+      try { await openOrg(input, null, true); }
+      catch { throw new GuestApiError("code_bad"); }
+      setCode(""); setTab("players"); setMode("admin"); window.history.replaceState(null, "", "?mode=admin");
+      return;
+    }
+    throw new GuestApiError("code_bad");
+  }
+
   async function login(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");
+    if (server) { try { await loginServer(); } catch (err) { setError(guestMsg(err)); } finally { setBusy(false); } return; }
     try {
       const file = party ?? await fetchParty(); setParty(file);
       const unknown = t.unknownCode;
@@ -211,7 +284,7 @@ export default function Game() {
       throw new Error(file ? unknown : t.notPublished);
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
-  function logout() { store.del(KEY_CODE); setView(null); setHidden(false); }
+  function logout() { store.del(KEY_CODE); store.del(KEY_PIN); setView(null); setHidden(false); setPinSetup(null); }
 
   // ---------- Organisation ----------
   async function unlock(e: FormEvent) {
@@ -229,7 +302,8 @@ export default function Game() {
       }
       let source = party, connected = false;
       if (server) {
-        const remote = await storeFor().fetch();
+        pw.current = password;
+        const remote = await storeFor().fetch().catch((e) => { pw.current = ""; throw e; });
         if (!remote) await serverLogin(password);
         source = remote?.file ?? null; remoteSha.current = remote?.sha ?? null; connected = true; setParty(source);
       } else if (gh.token) {
@@ -486,8 +560,8 @@ export default function Game() {
               const role = p.role || null, dossier = hasDossier(p);
               return <tr key={p.id}><td><div className="person"><div className="avatar">{p.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}</div><div><strong>{p.name}{p.lang === "fr" && <span className="lang-chip">FR</span>}</strong><small className="code-chip">{formatCode(p.code)}</small></div></div></td>
                 <td>{role ? <span className={`status ${darkRoles.includes(role) ? "killer" : "ready"}`}>{roles[role]}</span> : <button className="text-button" onClick={() => editPlayer(p)}><Plus size={14}/> Escolher papel</button>}</td>
-                <td><span className={`status ${role ? "ready" : "pending"}`}>{!role ? "Por preparar" : dossier ? "Papel + dossiê" : "Papel escolhido"}</span></td>
-                <td><div className="row-actions"><button aria-label={`Copiar convite de ${p.name}`} title="Copiar convite com o código" onClick={() => copy(invite(p), `Convite de ${p.name} copiado.`)}><Copy size={16}/></button><button aria-label={`Editar ${p.name}`} onClick={() => editPlayer(p)}><Pencil size={16}/></button><button aria-label={`Eliminar ${p.name}`} onClick={() => setConfirm({ id: p.id, name: p.name })}><Trash2 size={16}/></button></div></td></tr>;
+                <td><span className={`status ${role ? "ready" : "pending"}`}>{!role ? "Por preparar" : dossier ? "Papel + dossiê" : "Papel escolhido"}</span>{server && <span className={`status ${withPin.has(p.code) ? "seen" : "pending"} pin-status`}>{withPin.has(p.code) ? "PIN criado" : "Ainda com o código"}</span>}</td>
+                <td><div className="row-actions">{server && withPin.has(p.code) && <button aria-label={`Repor o PIN de ${p.name}`} title="Repor o PIN (o código de origem volta a funcionar)" onClick={() => resetPin(p)}><RotateCcw size={16}/></button>}<button aria-label={`Copiar convite de ${p.name}`} title="Copiar convite com o código" onClick={() => copy(invite(p), `Convite de ${p.name} copiado.`)}><Copy size={16}/></button><button aria-label={`Editar ${p.name}`} onClick={() => editPlayer(p)}><Pencil size={16}/></button><button aria-label={`Eliminar ${p.name}`} onClick={() => setConfirm({ id: p.id, name: p.name })}><Trash2 size={16}/></button></div></td></tr>;
             })}</tbody></table>{!data.players.length ? <div className="empty"><Users size={36}/><h3>A mesa ainda está vazia.</h3><p>Adicionem os convidados e escolham quem é quem.</p><button className="secondary" onClick={() => editPlayer()}>Adicionar o primeiro jogador <Plus size={16}/></button></div> : !visiblePlayers.length ? <div className="empty"><p>Nenhum jogador encontrado.</p></div> : null}</div>
           </section>}
           {tab !== "settings" && <div className="invite-strip"><div className="invite-icon"><KeyRound size={23}/></div><div><h3>A porta de entrada para o mistério.</h3><p>Cada jogador entra com o seu código secreto. Usa o botão <Copy size={13}/> ao lado de cada nome para copiar o convite pessoal.</p></div><button className="secondary" onClick={() => copy(siteUrl(), "Endereço do jogo copiado.")}>Copiar endereço <Share2 size={15}/></button></div>}
@@ -497,7 +571,11 @@ export default function Game() {
     </div> :
 
     <main className={`player-main ${view ? "has-player" : ""}`}>
-      {loading ? <div className="loading"><Fingerprint size={40}/><p>{t.loading}</p></div> : view ? <div className="dossier"><div className="dossier-top"><span className="eyebrow">{t.confidential} · {view.name}</span><button className="quiet" onClick={logout}><LogOut size={16}/> {t.leave}</button></div>
+      {loading ? <div className="loading"><Fingerprint size={40}/><p>{t.loading}</p></div> : pinSetup ? <section className="login-card pin-card"><div className="file-mark">{t.fileMark} <span>02 / PIN</span></div><div className="mask-emblem"><KeyRound size={46}/></div><h2>{t.pinTitle}</h2><p>{t.pinText}</p>
+        <form onSubmit={savePin}><label>{t.pinLabel}<input className="code-input pin-input" type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={4} required autoFocus value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 4))}/></label>
+          <label>{t.pinConfirm}<input className="code-input pin-input" type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" maxLength={4} required value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 4))}/></label>
+          {error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.pinSave}<ArrowRight size={18}/></button></form>
+        <div className="login-note"><LockKeyhole size={14}/><span>{t.pinNote}</span></div></section> : view ? <div className="dossier"><div className="dossier-top"><span className="eyebrow">{t.confidential} · {view.name}</span><button className="quiet" onClick={logout}><LogOut size={16}/> {t.leave}</button></div>
         {view.role || hasDossier(view) ? <><div className="dossier-title"><div><div className="eyebrow">{t.tonight}</div><h1>{hidden ? "••••••••" : view.name}</h1>{(hidden || view.occupation) && <p>{hidden ? t.hiddenFile : view.occupation}</p>}</div><VenetianMask size={68}/></div><div className="privacy-bar"><span><LockKeyhole size={15}/> {t.eyesOnly}</span><button className="quiet" onClick={() => setHidden(!hidden)}><Eye size={16}/>{hidden ? t.show : t.hide}</button></div>
           {!hidden && <>{view.role && <RoleBanner role={view.role} lang={lang}/>}{hasDossier(view) && <div className="dossier-sections">{sections.filter((s) => (view[s.key] || "").trim()).map((s) => { const Icon = sectionIcons[s.key]; return <section key={s.key}><Icon size={21}/><h2>{t.sections[s.key]}</h2><p className="pre">{view[s.key]}</p></section>; })}</div>}</>}
           <p className="closing">{t.closing}</p></>
@@ -505,7 +583,7 @@ export default function Game() {
         <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> {t.checkUpdates}</button>{error && <p className="error" role="alert">{error}</p>}</div> :
       <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> {t.eyebrow}</div><h1 className="sr-only">O Assassinato do Gabriel</h1><Logo/><p className="tagline">{t.tagline.map((line) => <span key={line}>{line}</span>)}</p><div className="intro-foot"><Fingerprint size={27}/><span>{t.truth[0]}<br/><strong>{t.truth[1]}</strong></span></div></section>
         <section className="login-card"><div className="file-mark">{t.fileMark} <span>{t.entry}</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>{t.enterTitle}</h2><p>{t.enterText}</p>
-          <form onSubmit={login}><label>{t.codeLabel}<input className="code-input login-code" required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{t.codeHint}</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.discover}<ArrowRight size={18}/></button></form>
+          <form onSubmit={login}><label>{server ? t.codeOrPin : t.codeLabel}<input className="code-input login-code" inputMode={server ? "text" : undefined} required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{server ? t.codeOrPinHint : t.codeHint}</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.discover}<ArrowRight size={18}/></button></form>
           <div className="login-note"><LockKeyhole size={14}/><span>{t.accessNote[0]}<br/>{t.accessNote[1]}</span></div></section>
         <div className="player-footer">O ASSASSINATO DO GABRIEL <span>{t.footer}</span></div></>}
     </main>}

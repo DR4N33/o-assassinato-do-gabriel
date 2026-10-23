@@ -23,6 +23,8 @@ jobs:
           check "sem festa = 404" 'test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/party.json)" = 404'
           check "palavra-passe errada = 401" 'test "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer errada-errada" http://127.0.0.1:18080/api/login)" = 401'
           check "palavra-passe certa = 200" 'test "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer palavra-passe-teste" http://127.0.0.1:18080/api/login)" = 200'
+          check "festa protegida = 401" 'test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:18080/api/party)" = 401'
+          check "PIN sem festa = 404" 'test "$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "{\"pin\":\"1234\"}" http://127.0.0.1:18080/api/guest/pin)" = 404'
           check "volume /data gravável" 'docker exec festa-test sh -c "touch /data/.w && rm /data/.w"'
       - if: always()
         run: docker logs festa-test || true

@@ -91,8 +91,9 @@ export async function serverLogin(password: string): Promise<void> {
 export function serverStore(password: () => string): Store {
   return {
     async fetch() {
-      const res = await fetch(`./api/party?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`./api/party?t=${Date.now()}`, { cache: "no-store", headers: { Authorization: `Bearer ${password()}` } });
       if (res.status === 404) return null;
+      if (res.status === 401) throw new Error("Palavra-passe incorreta.");
       if (!res.ok) throw new Error("O servidor não respondeu. Tenta outra vez.");
       const body = await res.json() as { sha: string; file: unknown };
       if (!isPartyFile(body.file)) throw new Error("A festa guardada no servidor não é válida.");
@@ -115,3 +116,29 @@ export function serverStore(password: () => string): Store {
 export function githubStore(t: GitHubTarget): Store {
   return { fetch: () => fetchRemote(t), write: (file, sha, message) => writeRemote(t, file, sha, message) };
 }
+
+// ---------- Convidados com PIN (modo servidor) ----------
+export type GuestError = "code_bad" | "code_replaced" | "pin_bad" | "pin_taken" | "pin_format" | "too_many" | "not_published" | "network";
+export class GuestApiError extends Error { constructor(public kind: GuestError) { super(kind); } }
+async function guest<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try { res = await fetch(`./api/guest/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch { throw new GuestApiError("network"); }
+  const data = await res.json().catch(() => ({})) as { error?: GuestError } & T;
+  if (!res.ok) throw new GuestApiError(data.error || "network");
+  return data;
+}
+export const guestCode = (code: string) => guest<{ file: PartyFile }>("code", { code });
+export const guestSetPin = (code: string, pin: string) => guest<{ ok: true }>("setpin", { code, pin });
+export const guestPin = (pin: string) => guest<{ code: string; file: PartyFile }>("pin", { pin });
+export async function serverExists(): Promise<boolean> {
+  const r = await fetch(`./api/status?t=${Date.now()}`, { cache: "no-store" });
+  return r.ok && ((await r.json()) as { exists: boolean }).exists;
+}
+async function adminPost<T>(path: string, password: string, body: unknown): Promise<T> {
+  const res = await fetch(`./api/admin/${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${password}` }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error("O servidor recusou o pedido.");
+  return res.json() as Promise<T>;
+}
+export const adminPinStatus = (password: string, codes: string[]) => adminPost<{ withPin: string[] }>("pins", password, { codes });
+export const adminPinReset = (password: string, code: string) => adminPost<{ ok: true; existed: boolean }>("pins/reset", password, { code });

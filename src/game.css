@@ -123,3 +123,9 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 .qr-sheet h2 small{display:block;font:italic 16px "Playfair Display",serif;color:var(--muted);margin-top:4px}
 @media print{.qr-steps small,.qr-sheet h2 small{color:#555!important}}
 @media(max-width:760px){.top-actions{gap:12px}.lang-switch button{padding:5px 9px}}
+/* PIN */
+.pin-card{margin:40px auto;max-width:460px;grid-column:1/-1}
+.pin-input{letter-spacing:14px!important;font-size:26px!important;text-align:center}
+.pin-card form{display:grid;gap:14px}
+.pin-status{margin-left:6px}
+@media(max-width:760px){.pin-status{margin:6px 0 0}}
