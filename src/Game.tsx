@@ -123,7 +123,7 @@ export default function Game() {
       const file = await fetchParty(); setParty(file);
       if (c && file) {
         const v = await openPlayer(file, c);
-        if (v) { setView(v); setCode(""); store.set(KEY_CODE, normalizeCode(c)); if (v.lang) setLang(v.lang); }
+        if (v) { setView(v); setCode(""); store.set(KEY_CODE, normalizeCode(c)); setLang(v.lang || "pt"); }
         else {
           setView(null); store.del(KEY_CODE);
           if (linkCode) throw new Error(T[currentLang()].unknownCode);
@@ -237,13 +237,13 @@ export default function Game() {
     const r = await guestPin(pin);
     const v = await openPlayer(r.file, r.code);
     if (!v) throw new GuestApiError("pin_bad");
-    store.set(KEY_PIN, pin); setView(v); setCode(""); if (v.lang) setLang(v.lang);
+    store.set(KEY_PIN, pin); setView(v); setCode(""); setLang(v.lang || "pt");
   }
   async function enterWithCode(c: string) {
     const r = await guestCode(c);
     const v = await openPlayer(r.file, c);
     if (!v) throw new GuestApiError("code_bad");
-    if (v.lang) setLang(v.lang);
+    setLang(v.lang || "pt");
     setPin1(""); setPin2(""); setCode(""); setPinSetup({ code: normalizeCode(c), view: v });
   }
   async function savePin(e: FormEvent) {
@@ -277,7 +277,7 @@ export default function Game() {
       const unknown = t.unknownCode;
       // 1) código de convidado
       const v = file ? await openPlayer(file, code) : null;
-      if (v) { store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode(""); if (v.lang) setLang(v.lang); return; }
+      if (v) { store.set(KEY_CODE, normalizeCode(code)); setView(v); setCode(""); setLang(v.lang || "pt"); return; }
       // 2) código da organização (André & Rosa) → bastidores
       const secret = code.trim();
       if (secret.length >= 8) {
