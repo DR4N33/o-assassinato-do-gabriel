@@ -99,7 +99,7 @@ th,td small{color:#b79aa4}.text-button,.row-actions button{color:#d3a8af}
 .logo-name{font:italic 500 1em "Playfair Display",Georgia,serif;color:var(--accent);letter-spacing:-.01em}
 .logo-dot{display:inline-block;width:.15em;height:.15em;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#c0394b;margin-left:.06em}
 .tagline span{display:block}
-.login-code{text-transform:none!important;letter-spacing:3px}
+.login-code{text-transform:none!important;letter-spacing:3px}.login-code.code-mode{text-transform:uppercase!important}
 @media(max-width:1100px) and (min-width:761px){.logo-text{font-size:40px}}
 @media(max-width:760px){
   .logo{margin:20px 0}

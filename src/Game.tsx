@@ -84,6 +84,12 @@ export default function Game() {
   // Modo servidor: depois da 1.ª entrada com o código, o convidado cria um PIN de 4 dígitos
   const [pinSetup, setPinSetup] = useState<{ code: string; view: PlayerView } | null>(null), [pin1, setPin1] = useState(""), [pin2, setPin2] = useState("");
   const [withPin, setWithPin] = useState<Set<string>>(new Set());
+  // Campo de entrada: maiúsculas e "-" automáticos enquanto parece um código (ABC-123).
+  // O valor real (code) guarda o que foi escrito, para não estragar a palavra-passe da organização nem o PIN.
+  const autoDash = (raw: string) => /^[A-Za-z0-9]{4,6}$/.test(raw) && (/[A-Za-z]/.test(raw) || raw.length >= 5);
+  const codeShown = autoDash(code) ? `${code.slice(0, 3)}-${code.slice(3)}` : code;
+  const looksLikeCode = /^[A-Za-z0-9-]*$/.test(code) && normalizeCode(code).length <= 6;
+  const onCodeInput = (v: string) => setCode(autoDash(code) && v[3] === "-" ? v.slice(0, 3) + v.slice(4) : v);
   // organisation
   const [data, setData] = useState<PartyData | null>(null), [dirty, setDirty] = useState(false);
   const [password, setPassword] = useState(""), [password2, setPassword2] = useState(""), [hasDraft, setHasDraft] = useState(false);
@@ -583,7 +589,7 @@ export default function Game() {
         <button className="quiet" onClick={() => loadPlayer()}><RefreshCw size={15}/> {t.checkUpdates}</button>{error && <p className="error" role="alert">{error}</p>}</div> :
       <><section className="intro"><div className="eyebrow"><span className="tiny-line"/> {t.eyebrow}</div><h1 className="sr-only">O Assassinato do Gabriel</h1><Logo/><p className="tagline">{t.tagline.map((line) => <span key={line}>{line}</span>)}</p><div className="intro-foot"><Fingerprint size={27}/><span>{t.truth[0]}<br/><strong>{t.truth[1]}</strong></span></div></section>
         <section className="login-card"><div className="file-mark">{t.fileMark} <span>{t.entry}</span></div><div className="mask-emblem"><VenetianMask size={52}/></div><h2>{t.enterTitle}</h2><p>{t.enterText}</p>
-          <form onSubmit={login}><label>{server ? t.codeOrPin : t.codeLabel}<input className="code-input login-code" inputMode={server ? "text" : undefined} required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={code} onChange={(e) => setCode(e.target.value)} placeholder="K7M-2QX"/><small>{server ? t.codeOrPinHint : t.codeHint}</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.discover}<ArrowRight size={18}/></button></form>
+          <form onSubmit={login}><label>{server ? t.codeOrPin : t.codeLabel}<input className={`code-input login-code ${looksLikeCode ? "code-mode" : ""}`} inputMode={server ? "text" : undefined} required autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} maxLength={64} value={codeShown} onChange={(e) => onCodeInput(e.target.value)} placeholder="K7M-2QX"/><small>{server ? t.codeOrPinHint : t.codeHint}</small></label>{error && <p role="alert" className="error">{error}</p>}<button className="primary" disabled={busy}>{busy ? t.opening : t.discover}<ArrowRight size={18}/></button></form>
           <div className="login-note"><LockKeyhole size={14}/><span>{t.accessNote[0]}<br/>{t.accessNote[1]}</span></div></section>
         <div className="player-footer">O ASSASSINATO DO GABRIEL <span>{t.footer}</span></div></>}
     </main>}
