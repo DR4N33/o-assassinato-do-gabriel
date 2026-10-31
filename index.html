@@ -1,6 +1,12 @@
 <!doctype html>
 <html lang="pt-PT">
   <head>
+    <script>
+      // A cifra do navegador só funciona em https: forçar sempre https (exceto em testes locais)
+      if (location.protocol === "http:" && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(location.hostname)) {
+        location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+      }
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
